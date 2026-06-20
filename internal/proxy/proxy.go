@@ -48,7 +48,14 @@ func (p *Proxy) route(r *http.Request) route {
 		}
 		return route{"openai", p.OpenAITarget}
 	}
-	if r.URL.Path == "/v1/messages" {
+	// The Anthropic SDK (used by opencode, Claude Code, etc.) sends
+	// `anthropic-version` on every request. This is more robust than
+	// path matching: it also catches /v1/messages/count_tokens and any
+	// future endpoints, routing them to Anthropic instead of OpenAI.
+	if r.Header.Get("anthropic-version") != "" {
+		return route{"anthropic", p.AnthropicTarget}
+	}
+	if strings.HasPrefix(r.URL.Path, "/v1/messages") {
 		return route{"anthropic", p.AnthropicTarget}
 	}
 	return route{"openai", p.OpenAITarget}

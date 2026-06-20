@@ -147,6 +147,52 @@ func TestOpenAIStreamingCapture(t *testing.T) {
 	}
 }
 
+func TestRoutingByAnthropicVersionHeader(t *testing.T) {
+	// opencode's Anthropic SDK sends `anthropic-version` on every request,
+	// including endpoints like /v1/messages/count_tokens. Routing must key off
+	// that header, not just /v1/messages, so these reach Anthropic.
+	anthMock := anthropicStreamMock(t)
+	defer anthMock.Close()
+	oaiMock := openAIStreamMock(t)
+	defer oaiMock.Close()
+
+	st, _ := store.New("", 100)
+	bus := event.NewBus()
+	p := New(st, bus, 0)
+	p.AnthropicTarget = anthMock.URL
+	p.OpenAITarget = oaiMock.URL
+	proxySrv := httptest.NewServer(p)
+	defer proxySrv.Close()
+
+	body := map[string]any{
+		"model":    "claude-sonnet-4-5",
+		"stream":   true,
+		"messages": []map[string]any{{"role": "user", "content": "hi"}},
+	}
+	b, _ := json.Marshal(body)
+	// Hit a non-/v1/messages path but with the Anthropic header → must route to anthropic.
+	req, _ := http.NewRequest("POST", proxySrv.URL+"/v1/messages/count_tokens", bytes.NewReader(b))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("anthropic-version", "2023-06-01")
+	req.Header.Set("x-api-key", "test")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	out, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if resp.StatusCode != 200 {
+		t.Fatalf("status %d body %s (should have routed to anthropic mock)", resp.StatusCode, out)
+	}
+	if !bytes.Contains(out, []byte("Hello world")) {
+		t.Fatalf("expected anthropic mock response, got: %s", out)
+	}
+	ev := lastNonInflight(st)
+	if ev.Provider != "anthropic" {
+		t.Fatalf("provider = %q, want anthropic (header-based routing)", ev.Provider)
+	}
+}
+
 func TestOpenAINonStreamingCapture(t *testing.T) {
 	mock := openAIJSONMock(t)
 	defer mock.Close()

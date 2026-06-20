@@ -42,10 +42,13 @@ Terminal 2 — run your agent through it:
 ```bash
 agenttop run -- claude          # Claude Code
 agenttop run -- codex           # OpenAI Codex CLI
+agenttop run -- opencode        # OpenCode
 agenttop run -- gemini          # Gemini CLI
 ```
 
 That's it. Watch the dashboard light up.
+
+> **opencode note:** opencode configures providers through its config file rather than `*_BASE_URL` env vars, so `agenttop run -- opencode` injects an inline runtime config (`OPENCODE_CONFIG_CONTENT`) that redirects its Anthropic and OpenAI providers to the proxy. Your API keys (stored in `~/.local/share/opencode/auth.json`) and the rest of your opencode config are untouched.
 
 Want them side by side? Throw it in tmux:
 
@@ -58,7 +61,7 @@ tmux new-session 'agenttop' \; split-window -h 'agenttop run -- claude'
 - **Live request table** — every model call, with provider, model, status, input/output tokens, and per-request cost. In-flight requests show a spinner and stream in real time.
 - **Running total** — cumulative `$` spent, total tokens in/out, request count, and a live **burn rate** in `$/hour` computed over the last 60 seconds.
 - **Detail pane** — select any request to see the prompt preview and the response that came back.
-- **Per-agent support** — Claude Code, Cursor, Codex CLI, Gemini CLI, OpenCode, and anything else that lets you set `ANTHROPIC_BASE_URL` / `OPENAI_BASE_URL` / `OPENAI_API_BASE`.
+- **Per-agent support** — Claude Code, Cursor, Codex CLI, OpenCode, Gemini CLI, and anything else that lets you set `ANTHROPIC_BASE_URL` / `OPENAI_BASE_URL` / `OPENAI_API_BASE` (or, for opencode, a provider `baseURL`).
 
 ## How it works
 

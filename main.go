@@ -35,6 +35,7 @@ Examples:
   # then in another terminal:
   agenttop run -- claude
   agenttop run -- codex
+  agenttop run -- opencode
 `
 
 func main() {
