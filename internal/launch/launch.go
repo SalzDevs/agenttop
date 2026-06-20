@@ -46,7 +46,7 @@ func isOpencode(cmd string) bool {
 // proxy knows their upstreams (api.anthropic.com / api.openai.com) from its
 // routing logic.
 //
-// For opencode-go and opencode-zen (OpenCode's own subscription providers), we
+// For opencode-go and opencode (Zen) — OpenCode's own subscription providers —
 // also set a custom header `x-agenttop-upstream` that tells the proxy the real
 // upstream URL, since these use OpenAI-format requests that the proxy would
 // otherwise misroute to api.openai.com.
@@ -56,7 +56,13 @@ func isOpencode(cmd string) bool {
 // unaffected.
 func opencodeConfigContent(port int) string {
 	base := fmt.Sprintf("http://127.0.0.1:%d/v1", port)
-	opencodeUpstream := "https://api.opencode.ai"
+	// opencode-go and opencode (Zen) use custom API URLs on opencode.ai.
+	// The proxy receives requests at /v1/chat/completions (because we set
+	// baseURL to .../v1), and forwards to upstream + /v1/chat/completions.
+	// So the upstream must NOT include /v1 — that comes from the request path.
+	// Real APIs (from models.dev provider.toml):
+	//   opencode-go: https://opencode.ai/zen/go/v1  → upstream = .../zen/go
+	//   opencode:    https://opencode.ai/zen/v1      → upstream = .../zen
 	cfg := map[string]any{
 		"provider": map[string]any{
 			"anthropic": map[string]any{
@@ -69,15 +75,15 @@ func opencodeConfigContent(port int) string {
 				"options": map[string]any{
 					"baseURL": base,
 					"headers": map[string]any{
-						"x-agenttop-upstream": opencodeUpstream,
+						"x-agenttop-upstream": "https://opencode.ai/zen/go",
 					},
 				},
 			},
-			"opencode-zen": map[string]any{
+			"opencode": map[string]any{
 				"options": map[string]any{
 					"baseURL": base,
 					"headers": map[string]any{
-						"x-agenttop-upstream": opencodeUpstream,
+						"x-agenttop-upstream": "https://opencode.ai/zen",
 					},
 				},
 			},

@@ -44,8 +44,8 @@ func TestOpencodeConfigContent(t *testing.T) {
 	if oaiOpts["baseURL"] != "http://127.0.0.1:7331/v1" {
 		t.Fatalf("openai baseURL = %v", oaiOpts["baseURL"])
 	}
-	// opencode-go and opencode-zen must have baseURL + upstream header
-	for _, pid := range []string{"opencode-go", "opencode-zen"} {
+	// opencode-go and opencode (Zen) must have baseURL + upstream header
+	for _, pid := range []string{"opencode-go", "opencode"} {
 		p, ok := prov[pid].(map[string]any)
 		if !ok {
 			t.Fatalf("missing %s provider in config", pid)
@@ -55,9 +55,15 @@ func TestOpencodeConfigContent(t *testing.T) {
 			t.Fatalf("%s baseURL = %v", pid, opts["baseURL"])
 		}
 		hdrs, _ := opts["headers"].(map[string]any)
-		if hdrs["x-agenttop-upstream"] != "https://api.opencode.ai" {
-			t.Fatalf("%s upstream header = %v", pid, hdrs["x-agenttop-upstream"])
+		if hdrs["x-agenttop-upstream"] == nil || hdrs["x-agenttop-upstream"] == "" {
+			t.Fatalf("%s missing x-agenttop-upstream header", pid)
 		}
+	}
+	// opencode-go upstream should point to the real API (without /v1)
+	goOpts, _ := getOpts(prov["opencode-go"].(map[string]any))
+	goHdrs, _ := goOpts["headers"].(map[string]any)
+	if goHdrs["x-agenttop-upstream"] != "https://opencode.ai/zen/go" {
+		t.Fatalf("opencode-go upstream = %v, want https://opencode.ai/zen/go", goHdrs["x-agenttop-upstream"])
 	}
 	if !strings.Contains(raw, "baseURL") {
 		t.Fatal("expected baseURL in content")
