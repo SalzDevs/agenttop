@@ -36,6 +36,19 @@ func New(s *store.Store, b *event.Bus, port int) *Proxy {
 	}
 }
 
+// NewWithUpstreams is like New but lets the caller override the upstream
+// provider URLs. Useful for local LLMs, corporate proxies, or testing.
+func NewWithUpstreams(s *store.Store, b *event.Bus, port int, anthropicURL, openaiURL string) *Proxy {
+	p := New(s, b, port)
+	if anthropicURL != "" {
+		p.AnthropicTarget = anthropicURL
+	}
+	if openaiURL != "" {
+		p.OpenAITarget = openaiURL
+	}
+	return p
+}
+
 type route struct {
 	provider string
 	target   string

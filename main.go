@@ -34,13 +34,17 @@ Just the monitor (two-terminal mode, no tmux):
   agenttop run -- claude     run an agent pointed at the monitor (other terminal)
 
 Flags:
-  --port, -p <n>   proxy listen port (default 7331)
-  --log,  -l <p>   append events to a JSONL file (default: none)
+  --port, -p <n>         proxy listen port (default 7331)
+  --log,  -l <p>         append events to a JSONL file (default: none)
+  --anthropic-url <url>  override Anthropic upstream (for local LLMs / proxies)
+  --openai-url <url>     override OpenAI upstream (for local LLMs / proxies)
 `
 
 func main() {
 	port := flag.Int("port", 7331, "proxy listen port")
 	logPath := flag.String("log", "", "JSONL log path")
+	anthropicURL := flag.String("anthropic-url", "", "override Anthropic upstream URL")
+	openaiURL := flag.String("openai-url", "", "override OpenAI upstream URL")
 	flag.Usage = func() { fmt.Fprint(os.Stderr, usage) }
 	flag.Parse()
 
@@ -48,14 +52,14 @@ func main() {
 
 	// Bare `agenttop` → start the monitor (two-terminal mode).
 	if len(args) == 0 {
-		runMonitor(*port, *logPath)
+		runMonitor(*port, *logPath, *anthropicURL, *openaiURL)
 		return
 	}
 
 	switch args[0] {
 	case "monitor":
 		// `agenttop monitor` → just the monitor (used by the tmux top pane too).
-		runMonitor(*port, *logPath)
+		runMonitor(*port, *logPath, *anthropicURL, *openaiURL)
 	case "run":
 		// `agenttop run -- <cmd> [args]` → wrapper only (waits for proxy, injects env).
 		rest := stripDash(args[1:])
@@ -94,7 +98,7 @@ func stripDash(args []string) []string {
 
 // runMonitor starts the proxy + TUI monitor. Used by `agenttop`, `agenttop monitor`,
 // and the tmux top pane.
-func runMonitor(port int, logPath string) {
+func runMonitor(port int, logPath, anthropicURL, openaiURL string) {
 	st, err := store.New(logPath, 1000)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "agenttop: open store:", err)
@@ -103,7 +107,7 @@ func runMonitor(port int, logPath string) {
 	defer st.Close()
 
 	bus := event.NewBus()
-	p := proxy.New(st, bus, port)
+	p := proxy.NewWithUpstreams(st, bus, port, anthropicURL, openaiURL)
 	srv := &http.Server{
 		Addr:              p.ListenAddr(),
 		Handler:           p,
