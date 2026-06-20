@@ -31,29 +31,31 @@ git clone https://github.com/SalzDevs/agenttop && cd agenttop && make build
 
 ## Quickstart
 
-Terminal 1 — start the monitor:
+### One command (recommended)
+
+Needs [`tmux`](https://github.com/tmux/tmux) — install it once: `brew install tmux` (macOS) or `apt install tmux` (Linux).
 
 ```bash
+agenttop claude          # monitor on top, Claude Code below — one window
+agenttop opencode        # same, for OpenCode
+agenttop codex           # same, for Codex CLI
+agenttop gemini          # same, for Gemini CLI
+```
+
+That's it. `agenttop` opens a single tmux window: the live monitor on top, your agent running below. When the agent exits, the window closes. Detach with `Ctrl-b d` (re-attach with `tmux attach -t agenttop`).
+
+> **opencode note:** opencode configures providers through its config file rather than `*_BASE_URL` env vars, so `agenttop opencode` injects an inline runtime config (`OPENCODE_CONFIG_CONTENT`) that redirects its Anthropic and OpenAI providers to the proxy. Your API keys (stored in `~/.local/share/opencode/auth.json`) and the rest of your opencode config are untouched.
+
+### Two-terminal mode (no tmux)
+
+Prefer separate terminals, or don't have tmux? `agenttop` falls back to this automatically:
+
+```bash
+# terminal 1
 agenttop
-```
 
-Terminal 2 — run your agent through it:
-
-```bash
-agenttop run -- claude          # Claude Code
-agenttop run -- codex           # OpenAI Codex CLI
-agenttop run -- opencode        # OpenCode
-agenttop run -- gemini          # Gemini CLI
-```
-
-That's it. Watch the dashboard light up.
-
-> **opencode note:** opencode configures providers through its config file rather than `*_BASE_URL` env vars, so `agenttop run -- opencode` injects an inline runtime config (`OPENCODE_CONFIG_CONTENT`) that redirects its Anthropic and OpenAI providers to the proxy. Your API keys (stored in `~/.local/share/opencode/auth.json`) and the rest of your opencode config are untouched.
-
-Want them side by side? Throw it in tmux:
-
-```bash
-tmux new-session 'agenttop' \; split-window -h 'agenttop run -- claude'
+# terminal 2
+agenttop run -- claude
 ```
 
 ## What you see
@@ -85,10 +87,11 @@ your agent ──HTTP──▶ agenttop (localhost:7331) ──forward──▶ 
 
 - [x] Live multi-request table + cost burn
 - [x] Anthropic & OpenAI streaming + non-streaming usage
+- [x] One-command tmux split (`agenttop claude` — monitor + agent in one window)
+- [x] OpenCode support (config injection, no env vars needed)
 - [ ] DVR replay — scrub back through any agent's session
 - [ ] Tool-call & file-change capture via Claude Code / OpenCode hooks
 - [ ] Cost & rate-limit alarms (desktop notifications)
-- [ ] tmux split mode (`agenttop -- claude` does the split for you)
 - [ ] Web dashboard mode
 - [ ] Community-maintained pricing table (auto-updated)
 
