@@ -1,0 +1,5 @@
+/agenttop
+/dist/
+*.log
+*.jsonl
+.DS_Store
