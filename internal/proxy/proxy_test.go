@@ -147,6 +147,74 @@ func TestOpenAIStreamingCapture(t *testing.T) {
 	}
 }
 
+func TestRoutingByUpstreamHeader(t *testing.T) {
+	// opencode-go and opencode-zen set x-agenttop-upstream to tell the proxy
+	// the real API URL. The proxy must forward there, not to api.openai.com.
+	upstreamMock := openAIStreamMock(t)
+	defer upstreamMock.Close()
+
+	st, _ := store.New("", 100)
+	bus := event.NewBus()
+	p := New(st, bus, 0)
+	// AnthropicTarget and OpenAITarget are the defaults — the upstream header
+	// should override them.
+	proxySrv := httptest.NewServer(p)
+	defer proxySrv.Close()
+
+	body := map[string]any{
+		"model":    "qwen-3-coder-480b",
+		"stream":   true,
+		"messages": []map[string]any{{"role": "user", "content": "hi"}},
+	}
+	b, _ := json.Marshal(body)
+	req, _ := http.NewRequest("POST", proxySrv.URL+"/v1/chat/completions", bytes.NewReader(b))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer test-key")
+	req.Header.Set("x-agenttop-upstream", upstreamMock.URL)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	out, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if resp.StatusCode != 200 {
+		t.Fatalf("status %d body %s (should have routed to upstream mock)", resp.StatusCode, out)
+	}
+	if !bytes.Contains(out, []byte("Hi there")) {
+		t.Fatalf("expected upstream mock response, got: %s", out)
+	}
+}
+
+func TestUpstreamHeaderStripped(t *testing.T) {
+	// The x-agenttop-upstream header must NOT be forwarded to the real API.
+	upstreamMock := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("x-agenttop-upstream") != "" {
+			t.Errorf("x-agenttop-upstream should be stripped, got: %q", r.Header.Get("x-agenttop-upstream"))
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		f := w.(http.Flusher)
+		flushSSE(w, f, `data: {"choices":[{"delta":{"content":"ok"}}]}`+"\n\n")
+		flushSSE(w, f, `data: {"usage":{"prompt_tokens":10,"completion_tokens":5}}`+"\n\n")
+		flushSSE(w, f, "data: [DONE]\n\n")
+	}))
+	defer upstreamMock.Close()
+
+	st, _ := store.New("", 100)
+	bus := event.NewBus()
+	p := New(st, bus, 0)
+	proxySrv := httptest.NewServer(p)
+	defer proxySrv.Close()
+
+	b, _ := json.Marshal(map[string]any{"model": "test", "messages": []map[string]any{{"role": "user", "content": "hi"}}})
+	req, _ := http.NewRequest("POST", proxySrv.URL+"/v1/chat/completions", bytes.NewReader(b))
+	req.Header.Set("x-agenttop-upstream", upstreamMock.URL)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+}
+
 func TestRoutingByAnthropicVersionHeader(t *testing.T) {
 	// opencode's Anthropic SDK sends `anthropic-version` on every request,
 	// including endpoints like /v1/messages/count_tokens. Routing must key off

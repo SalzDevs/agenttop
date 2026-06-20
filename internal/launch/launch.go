@@ -40,11 +40,23 @@ func isOpencode(cmd string) bool {
 }
 
 // opencodeConfigContent returns a minimal opencode config JSON that overrides
-// the Anthropic and OpenAI provider base URLs to point at the agenttop proxy.
-// It is merged with (and overrides) the user's own opencode config; API keys
-// are stored separately in ~/.local/share/opencode/auth.json and are unaffected.
+// the provider base URLs to point at the agenttop proxy.
+//
+// For anthropic and openai (standard API providers), we just set baseURL — the
+// proxy knows their upstreams (api.anthropic.com / api.openai.com) from its
+// routing logic.
+//
+// For opencode-go and opencode-zen (OpenCode's own subscription providers), we
+// also set a custom header `x-agenttop-upstream` that tells the proxy the real
+// upstream URL, since these use OpenAI-format requests that the proxy would
+// otherwise misroute to api.openai.com.
+//
+// The config is merged with (and overrides) the user's own opencode config;
+// API keys are stored separately in ~/.local/share/opencode/auth.json and are
+// unaffected.
 func opencodeConfigContent(port int) string {
 	base := fmt.Sprintf("http://127.0.0.1:%d/v1", port)
+	opencodeUpstream := "https://api.opencode.ai"
 	cfg := map[string]any{
 		"provider": map[string]any{
 			"anthropic": map[string]any{
@@ -52,6 +64,22 @@ func opencodeConfigContent(port int) string {
 			},
 			"openai": map[string]any{
 				"options": map[string]any{"baseURL": base},
+			},
+			"opencode-go": map[string]any{
+				"options": map[string]any{
+					"baseURL": base,
+					"headers": map[string]any{
+						"x-agenttop-upstream": opencodeUpstream,
+					},
+				},
+			},
+			"opencode-zen": map[string]any{
+				"options": map[string]any{
+					"baseURL": base,
+					"headers": map[string]any{
+						"x-agenttop-upstream": opencodeUpstream,
+					},
+				},
 			},
 		},
 	}

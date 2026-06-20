@@ -33,19 +33,42 @@ func TestOpencodeConfigContent(t *testing.T) {
 	if !ok {
 		t.Fatal("missing provider map")
 	}
+	// Standard providers
 	anth, _ := prov["anthropic"].(map[string]any)
 	oai, _ := prov["openai"].(map[string]any)
-	anthOpts, _ := anth["options"].(map[string]any)
-	oaiOpts, _ := oai["options"].(map[string]any)
+	anthOpts, _ := getOpts(anth)
+	oaiOpts, _ := getOpts(oai)
 	if anthOpts["baseURL"] != "http://127.0.0.1:7331/v1" {
 		t.Fatalf("anthropic baseURL = %v", anthOpts["baseURL"])
 	}
 	if oaiOpts["baseURL"] != "http://127.0.0.1:7331/v1" {
 		t.Fatalf("openai baseURL = %v", oaiOpts["baseURL"])
 	}
+	// opencode-go and opencode-zen must have baseURL + upstream header
+	for _, pid := range []string{"opencode-go", "opencode-zen"} {
+		p, ok := prov[pid].(map[string]any)
+		if !ok {
+			t.Fatalf("missing %s provider in config", pid)
+		}
+		opts, _ := p["options"].(map[string]any)
+		if opts["baseURL"] != "http://127.0.0.1:7331/v1" {
+			t.Fatalf("%s baseURL = %v", pid, opts["baseURL"])
+		}
+		hdrs, _ := opts["headers"].(map[string]any)
+		if hdrs["x-agenttop-upstream"] != "https://api.opencode.ai" {
+			t.Fatalf("%s upstream header = %v", pid, hdrs["x-agenttop-upstream"])
+		}
+	}
 	if !strings.Contains(raw, "baseURL") {
 		t.Fatal("expected baseURL in content")
 	}
+}
+
+func getOpts(p map[string]any) (map[string]any, bool) {
+	if p == nil {
+		return nil, false
+	}
+	return p["options"].(map[string]any), true
 }
 
 func TestEnvForAgent(t *testing.T) {

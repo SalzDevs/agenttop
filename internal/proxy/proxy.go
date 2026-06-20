@@ -55,6 +55,17 @@ type route struct {
 }
 
 func (p *Proxy) route(r *http.Request) route {
+	// x-agenttop-upstream: explicit upstream override (used by opencode-go,
+	// opencode-zen, and any custom provider that sets this header). This lets
+	// the proxy forward to the real API even for providers it doesn't know about.
+	if upstream := r.Header.Get("x-agenttop-upstream"); upstream != "" {
+		// Determine provider format from the path/header for parsing purposes.
+		provider := "openai"
+		if r.Header.Get("anthropic-version") != "" || strings.HasPrefix(r.URL.Path, "/v1/messages") {
+			provider = "anthropic"
+		}
+		return route{provider, upstream}
+	}
 	if h := r.Header.Get("x-agenttop-provider"); h != "" {
 		if h == "anthropic" {
 			return route{"anthropic", p.AnthropicTarget}
@@ -117,6 +128,7 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	copyHeaders(outReq.Header, r.Header)
 	outReq.Header.Del("x-agenttop-provider")
+	outReq.Header.Del("x-agenttop-upstream")
 	outReq.Header.Set("Host", hostOnly(rt.target))
 
 	resp, err := p.Client.Do(outReq)
