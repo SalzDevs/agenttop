@@ -326,12 +326,21 @@ func parseSSE(provider string, body []byte, meta reqMeta) (usage, string) {
 		} else {
 			if usageRaw, ok := raw["usage"]; ok && string(usageRaw) != "null" {
 				var uu struct {
-					PromptTokens     int `json:"prompt_tokens"`
-					CompletionTokens int `json:"completion_tokens"`
+					PromptTokens        int `json:"prompt_tokens"`
+					CompletionTokens    int `json:"completion_tokens"`
+					PromptCacheHitTokens int `json:"prompt_cache_hit_tokens"`
+					PromptCacheMissTokens int `json:"prompt_cache_miss_tokens"`
 				}
 				json.Unmarshal(usageRaw, &uu)
-				u.in = uu.PromptTokens
-				u.out = uu.CompletionTokens
+				if uu.PromptTokens > 0 {
+					u.in = uu.PromptTokens
+				}
+				if uu.PromptCacheHitTokens > 0 {
+					u.cacheRead = uu.PromptCacheHitTokens
+				}
+				if uu.CompletionTokens > 0 {
+					u.out = uu.CompletionTokens
+				}
 			}
 			extractOpenAIDelta(raw, &sb)
 		}
@@ -355,23 +364,20 @@ func extractDeltaText(raw map[string]json.RawMessage, sb *strings.Builder) {
 }
 
 func extractOpenAIDelta(raw map[string]json.RawMessage, sb *strings.Builder) {
-	var ch struct {
-		Delta struct {
-			Content string `json:"content"`
-		} `json:"delta"`
-	}
 	if d, ok := raw["choices"]; ok {
 		var choices []struct {
 			Delta struct {
-				Content string `json:"content"`
+				Content          string `json:"content"`
+				ReasoningContent string `json:"reasoning_content"`
 			} `json:"delta"`
 		}
 		json.Unmarshal(d, &choices)
 		for _, c := range choices {
-			sb.WriteString(c.Delta.Content)
+			if c.Delta.Content != "" {
+				sb.WriteString(c.Delta.Content)
+			}
 		}
 	}
-	_ = ch
 }
 
 func parseJSON(provider string, body []byte, meta reqMeta) (usage, string) {
