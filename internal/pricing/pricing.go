@@ -10,12 +10,14 @@ type Rate struct {
 }
 
 var table = map[string]Rate{
+	// Anthropic
 	"claude-opus-4":      {Input: 15, Output: 75, CacheRead: 1.5, CacheWrite: 18.75},
 	"claude-sonnet-4":    {Input: 3, Output: 15, CacheRead: 0.3, CacheWrite: 3.75},
 	"claude-sonnet-4-5":  {Input: 3, Output: 15, CacheRead: 0.3, CacheWrite: 3.75},
 	"claude-haiku-4":     {Input: 0.8, Output: 4, CacheRead: 0.08, CacheWrite: 1},
 	"claude-3-5-sonnet":  {Input: 3, Output: 15, CacheRead: 0.3, CacheWrite: 3.75},
 	"claude-3-5-haiku":   {Input: 0.8, Output: 4, CacheRead: 0.08, CacheWrite: 1},
+	// OpenAI
 	"gpt-4o":             {Input: 2.5, Output: 10},
 	"gpt-4o-mini":        {Input: 0.15, Output: 0.6},
 	"gpt-4.1":            {Input: 2, Output: 8},
@@ -25,8 +27,28 @@ var table = map[string]Rate{
 	"o3":                 {Input: 10, Output: 40},
 	"o3-mini":            {Input: 1.1, Output: 4.2},
 	"o4-mini":            {Input: 1.1, Output: 4.2},
+	// Google
 	"gemini-2.5-pro":     {Input: 1.25, Output: 10},
 	"gemini-2.5-flash":   {Input: 0.075, Output: 0.3},
+	// OpenCode Go models (pricing from models.dev)
+	"glm-5.2":            {Input: 1.4, Output: 4.4, CacheRead: 0.26},
+	"glm-5.1":            {Input: 1.4, Output: 4.4, CacheRead: 0.26},
+	"glm-5":              {Input: 1.4, Output: 4.4, CacheRead: 0.26},
+	"deepseek-v4-pro":    {Input: 1.74, Output: 3.48, CacheRead: 0.0145},
+	"deepseek-v4-flash":  {Input: 0.55, Output: 1.1, CacheRead: 0.014},
+	"kimi-k2.7-code":     {Input: 0.95, Output: 4.0, CacheRead: 0.19},
+	"kimi-k2.6":          {Input: 0.95, Output: 4.0, CacheRead: 0.19},
+	"kimi-k2.5":          {Input: 0.95, Output: 4.0, CacheRead: 0.19},
+	"qwen3.7-max":        {Input: 2.5, Output: 7.5, CacheRead: 0.5, CacheWrite: 3.125},
+	"qwen3.7-plus":       {Input: 0.85, Output: 2.6, CacheRead: 0.17},
+	"qwen3.6-plus":       {Input: 0.85, Output: 2.6, CacheRead: 0.17},
+	"qwen3.5-plus":       {Input: 0.85, Output: 2.6, CacheRead: 0.17},
+	"minimax-m3":         {Input: 0.1, Output: 0.4, CacheRead: 0.02},
+	"minimax-m2.7":       {Input: 0.1, Output: 0.4, CacheRead: 0.02},
+	"minimax-m2.5":       {Input: 0.1, Output: 0.4, CacheRead: 0.02},
+	"mimo-v2.5-pro":      {Input: 0.3, Output: 1.1, CacheRead: 0.06},
+	"mimo-v2.5":          {Input: 0.15, Output: 0.6, CacheRead: 0.03},
+	"mimo-v2-pro":        {Input: 0.15, Output: 0.6, CacheRead: 0.03},
 }
 
 func Lookup(model string) (Rate, bool) {
