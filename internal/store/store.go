@@ -18,19 +18,21 @@ type Store struct {
 	logFile  *os.File
 	enc      *json.Encoder
 
-	totalCost  float64
-	totalIn    int
-	totalOut   int
-	totalReqs  int
+	totalCost float64
+	totalIn   int
+	totalOut  int
+	totalReqs int
+
+	inFlight map[int64]bool
 }
 
 func New(path string, cap int) (*Store, error) {
-	s := &Store{cap: cap}
+	s := &Store{cap: cap, inFlight: make(map[int64]bool)}
 	if path != "" {
 		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 			return nil, err
 		}
-		f, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
+		f, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
 		if err != nil {
 			return nil, err
 		}
@@ -62,7 +64,10 @@ func (s *Store) Append(e event.Event) event.Event {
 		s.events = s.events[len(s.events)-s.cap:]
 	}
 
-	if !e.InFlight() {
+	if e.InFlight() {
+		s.inFlight[e.TraceID] = true
+	} else {
+		delete(s.inFlight, e.TraceID)
 		s.totalReqs++
 		s.totalCost += e.CostUSD
 		s.totalIn += e.InputTokens
@@ -89,10 +94,5 @@ func (s *Store) Recent(n int) []event.Event {
 func (s *Store) Stats() (cost float64, in, out, reqs, inFlight int) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	for _, e := range s.events {
-		if e.InFlight() {
-			inFlight++
-		}
-	}
-	return s.totalCost, s.totalIn, s.totalOut, s.totalReqs, inFlight
+	return s.totalCost, s.totalIn, s.totalOut, s.totalReqs, len(s.inFlight)
 }

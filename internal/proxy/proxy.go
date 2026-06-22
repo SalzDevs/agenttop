@@ -129,7 +129,6 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	copyHeaders(outReq.Header, r.Header)
 	outReq.Header.Del("x-agenttop-provider")
 	outReq.Header.Del("x-agenttop-upstream")
-	outReq.Header.Set("Host", hostOnly(rt.target))
 
 	resp, err := p.Client.Do(outReq)
 	if err != nil {
@@ -143,7 +142,7 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	hdr.Del("Content-Length")
 	w.WriteHeader(resp.StatusCode)
 
-	capture := &captureWriter{}
+	capture := newCaptureWriter()
 	flusher, _ := w.(http.Flusher)
 	buf := make([]byte, 4096)
 	for {
@@ -202,14 +201,40 @@ func hostOnly(u string) string {
 	return u
 }
 
-type captureWriter struct{ bytes.Buffer }
+type captureWriter struct {
+	buf   []byte
+	maxSz int
+}
+
+func newCaptureWriter() *captureWriter {
+	return &captureWriter{maxSz: 1 << 20} // 1MB — plenty for the final usage chunk
+}
 
 func (c *captureWriter) Write(b []byte) (int, error) {
-	if c.Len() > 1<<23 {
-		return len(b), nil
+	n := len(b)
+	if len(c.buf)+n <= c.maxSz {
+		c.buf = append(c.buf, b...)
+	} else {
+		// Keep the last maxSz bytes (ring buffer) so the final usage SSE
+		// chunk — which arrives at the end of the stream — is always captured.
+		overflow := len(c.buf) + n - c.maxSz
+		if overflow > 0 {
+			if overflow >= len(c.buf) {
+				c.buf = c.buf[:0]
+			} else {
+				c.buf = c.buf[overflow:]
+			}
+		}
+		remaining := c.maxSz - len(c.buf)
+		if remaining > n {
+			remaining = n
+		}
+		c.buf = append(c.buf, b[n-remaining:]...)
 	}
-	return c.Buffer.Write(b)
+	return n, nil
 }
+
+func (c *captureWriter) Bytes() []byte { return c.buf }
 
 type reqMeta struct {
 	model         string
@@ -326,10 +351,9 @@ func parseSSE(provider string, body []byte, meta reqMeta) (usage, string) {
 		} else {
 			if usageRaw, ok := raw["usage"]; ok && string(usageRaw) != "null" {
 				var uu struct {
-					PromptTokens        int `json:"prompt_tokens"`
-					CompletionTokens    int `json:"completion_tokens"`
+					PromptTokens         int `json:"prompt_tokens"`
+					CompletionTokens     int `json:"completion_tokens"`
 					PromptCacheHitTokens int `json:"prompt_cache_hit_tokens"`
-					PromptCacheMissTokens int `json:"prompt_cache_miss_tokens"`
 				}
 				json.Unmarshal(usageRaw, &uu)
 				if uu.PromptTokens > 0 {
@@ -349,7 +373,6 @@ func parseSSE(provider string, body []byte, meta reqMeta) (usage, string) {
 }
 
 func extractDeltaText(raw map[string]json.RawMessage, sb *strings.Builder) {
-	var t string
 	if d, ok := raw["delta"]; ok {
 		var dd struct {
 			Type string `json:"type"`
@@ -359,7 +382,6 @@ func extractDeltaText(raw map[string]json.RawMessage, sb *strings.Builder) {
 		if dd.Type == "text_delta" {
 			sb.WriteString(dd.Text)
 		}
-		_ = t
 	}
 }
 

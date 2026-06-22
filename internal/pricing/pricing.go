@@ -1,6 +1,9 @@
 package pricing
 
-import "strings"
+import (
+	"sort"
+	"strings"
+)
 
 type Rate struct {
 	Input      float64
@@ -51,13 +54,28 @@ var table = map[string]Rate{
 	"mimo-v2-pro":        {Input: 0.15, Output: 0.6, CacheRead: 0.03},
 }
 
+// sortedKeys is the pricing table keys sorted by length descending, so the
+// most specific prefix match wins (e.g. gpt-4o-mini matches gpt-4o-mini, not
+// gpt-4o). Computed once at init.
+var sortedKeys []string
+
+func init() {
+	sortedKeys = make([]string, 0, len(table))
+	for k := range table {
+		sortedKeys = append(sortedKeys, k)
+	}
+	sort.Slice(sortedKeys, func(i, j int) bool {
+		return len(sortedKeys[i]) > len(sortedKeys[j])
+	})
+}
+
 func Lookup(model string) (Rate, bool) {
 	if r, ok := table[model]; ok {
 		return r, true
 	}
-	for k, r := range table {
+	for _, k := range sortedKeys {
 		if strings.HasPrefix(model, k) {
-			return r, true
+			return table[k], true
 		}
 	}
 	return Rate{}, false

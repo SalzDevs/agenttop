@@ -167,17 +167,32 @@ func TestSparklineRendering(t *testing.T) {
 	}
 }
 
-func TestProviderBadge(t *testing.T) {
-	cases := map[string]string{
-		"anthropic":   "anth",
-		"openai":      "oai",
-		"opencode":    "oc",
-		"opencode-go": "oc",
-	}
-	for provider, want := range cases {
-		got := providerBadge(provider)
-		if !strings.Contains(got, want) {
-			t.Errorf("providerBadge(%q) = %q, want to contain %q", provider, got, want)
+func TestSelectorShowsRequests(t *testing.T) {
+	st, _ := store.New("", 100)
+	bus := event.NewBus()
+	m := New(st, bus, 7331)
+	m.ready = true
+	m.width = 120
+	m.height = 40
+
+	// Add 3 events
+	for i := 0; i < 3; i++ {
+		e := event.Event{
+			TraceID: int64(i + 1), Time: time.Now(), Provider: "anthropic",
+			Model: "claude-sonnet-4-5", Status: 200, InputTokens: 100, OutputTokens: 50,
+			CostUSD: 0.005, PromptPreview: "test", ResponsePreview: "resp",
 		}
+		st.Append(e)
+		m.applyEvent(e)
+	}
+
+	out := m.View()
+	// Should show request selector with all 3 models
+	if !strings.Contains(out, "claude-sonnet-4-5") {
+		t.Fatalf("selector should show model name, got:\n%s", out)
+	}
+	// Should show the selected marker
+	if !strings.Contains(out, "▶") {
+		t.Fatalf("selector should show selection marker, got:\n%s", out)
 	}
 }

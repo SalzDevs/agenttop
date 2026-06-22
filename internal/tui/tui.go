@@ -28,13 +28,9 @@ var (
 
 	// Detail
 	detailBorderStyle = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color("238")).Padding(0, 1)
+	selStyle          = lipgloss.NewStyle().Bold(true).Background(lipgloss.Color("236")).Foreground(lipgloss.Color("255"))
 	mutedStyle        = lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
 	dimStyle          = lipgloss.NewStyle().Foreground(lipgloss.Color("238"))
-
-	// Provider colors
-	provAnth = lipgloss.NewStyle().Foreground(lipgloss.Color("215"))
-	provOAI  = lipgloss.NewStyle().Foreground(lipgloss.Color("81"))
-	provOC   = lipgloss.NewStyle().Foreground(lipgloss.Color("111"))
 
 	// Sparkline
 	sparkHigh = lipgloss.NewStyle().Foreground(lipgloss.Color("214"))
@@ -80,14 +76,12 @@ type Model struct {
 	width    int
 	height   int
 	focusList bool
-	lastTick  time.Time
 	costWin   []timeDurCost
 
 	// Sparkline data: cost per 2-second bucket, most recent last
 	sparkData   []float64
 	sparkBucket float64
 	sparkTick   int
-	quit        bool
 }
 
 type timeDurCost struct {
@@ -108,7 +102,6 @@ func New(s *store.Store, b *event.Bus, port int) Model {
 		spinner:   sp,
 		viewport:  vp,
 		focusList: true,
-		lastTick:  time.Now(),
 		sparkData: make([]float64, 0, 40),
 	}
 }
@@ -139,7 +132,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.viewport.Height = max(5, m.height/4)
 		m.ready = true
 	case tickMsg:
-		m.lastTick = time.Now()
 		m.pruneCostWindow()
 		m.updateSpark()
 		return m, tea.Batch(tickCmd(), m.spinner.Tick)
@@ -153,7 +145,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "ctrl+c", "q":
-			m.quit = true
 			return m, tea.Quit
 		case "tab":
 			m.focusList = !m.focusList
@@ -273,13 +264,16 @@ func (m Model) View() string {
 	// ── Sparkline ──
 	spark := m.renderSparkline()
 
+	// ── Request selector ──
+	selector := m.renderSelector()
+
 	// ── Detail ──
 	detail := m.renderDetail()
 
 	// ── Footer ──
 	footer := m.renderFooter()
 
-	return strings.Join([]string{header, spark, detail, footer}, "\n")
+	return strings.Join([]string{header, spark, selector, detail, footer}, "\n")
 }
 
 func (m Model) renderHeader(cost float64, in, out, reqs, inFlight int, burn float64) string {
@@ -338,6 +332,57 @@ func (m Model) renderSparkline() string {
 	return b.String()
 }
 
+func (m Model) renderSelector() string {
+	if len(m.rows) == 0 {
+		return mutedStyle.Render("  waiting for requests...")
+	}
+
+	maxVisible := m.height - 18
+	if maxVisible < 3 {
+		maxVisible = 3
+	}
+	start := 0
+	if len(m.rows) > maxVisible {
+		start = len(m.rows) - maxVisible
+	}
+
+	var lines []string
+	for i := start; i < len(m.rows); i++ {
+		r := m.rows[i]
+		model := r.model
+		if model == "" {
+			model = "-"
+		}
+
+		status := ""
+		if r.inFlight {
+			status = "●"
+		} else if r.err != "" {
+			status = "✗"
+		} else {
+			status = "✓"
+		}
+
+		costStr := fmt.Sprintf("$%.4f", r.cost)
+		if r.inFlight {
+			costStr = "..."
+		}
+
+		marker := " "
+		if i == m.selected {
+			marker = "▶"
+		}
+
+		line := fmt.Sprintf("%s %s %s  in:%d out:%d  %s", marker, status, model, r.inTok, r.outTok, costStr)
+		if i == m.selected {
+			line = selStyle.Render(line)
+		}
+		lines = append(lines, line)
+	}
+
+	return strings.Join(lines, "\n")
+}
+
 func (m Model) renderDetail() string {
 	if len(m.rows) == 0 || m.selected < 0 || m.selected >= len(m.rows) {
 		return detailBorderStyle.Render(mutedStyle.Render(" select a request to see details"))
@@ -348,7 +393,7 @@ func (m Model) renderDetail() string {
 		statLabelStyle.Render("model:"), r.model,
 		statLabelStyle.Render("provider:"), r.provider,
 		statLabelStyle.Render("dur:"), r.duration)
-	fmt.Fprintf(&b, "%s %d↓  %d↑  %s $%.4f\n",
+	fmt.Fprintf(&b, "%s %d↑  %d↓  %s $%.4f\n",
 		statLabelStyle.Render("tokens:"), r.inTok, r.outTok,
 		statLabelStyle.Render("cost:"), r.cost)
 	b.WriteString(mutedStyle.Render("prompt: ") + wrapText(r.prompt, m.width-6) + "\n")
@@ -366,39 +411,15 @@ func (m Model) renderFooter() string {
 	return footer + "  " + focus
 }
 
-func providerBadge(provider string) string {
-	switch provider {
-	case "anthropic":
-		return provAnth.Render("anth")
-	case "openai":
-		return provOAI.Render("oai")
-	case "opencode", "opencode-go":
-		return provOC.Render("oc")
-	default:
-		return mutedStyle.Render(provider[:min(4, len(provider))])
-	}
-}
-
 func wrapText(s string, width int) string {
 	if s == "" {
 		return mutedStyle.Render("(empty)")
+	}
+	if width < 4 {
+		width = 4
 	}
 	if len([]rune(s)) <= width {
 		return s
 	}
 	return string([]rune(s)[:width-1]) + "…"
-}
-
-func max(a, b int) int {
-	if a > b {
-		return a
-	}
-	return b
-}
-
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
 }

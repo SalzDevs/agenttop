@@ -3,7 +3,6 @@ package proxy
 import (
 	"bytes"
 	"encoding/json"
-	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -314,5 +313,3 @@ func almost(a, b float64) bool {
 }
 
 func Cost(model string, in, out, cr, cw int) float64 { return pricing.Cost(model, in, out, cr, cw) }
-
-var _ = fmt.Sprint
