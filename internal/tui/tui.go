@@ -15,58 +15,89 @@ import (
 )
 
 var (
-	titleStyle   = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("212")).Padding(0, 1)
-	mutedStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
-	costStyle    = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("214"))
-	goodStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("42"))
-	badStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("203"))
-	selStyle     = lipgloss.NewStyle().Bold(true).Background(lipgloss.Color("236")).Foreground(lipgloss.Color("255"))
-	hdrStyle     = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("250")).Background(lipgloss.Color("236"))
-	dimStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
-	provAnth     = lipgloss.NewStyle().Foreground(lipgloss.Color("99"))
-	provOAI      = lipgloss.NewStyle().Foreground(lipgloss.Color("81"))
+	// Brand
+	brandStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("213")).Padding(0, 1)
+
+	// Stat boxes
+	statBoxStyle    = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).Padding(0, 1).BorderForeground(lipgloss.Color("238"))
+	statLabelStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("241")).Faint(true)
+	statValueStyle  = lipgloss.NewStyle().Bold(true)
+	costValueStyle  = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("214"))
+	burnValueStyle  = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("203"))
+	liveValueStyle  = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("42"))
+
+	// Table
+	tableHeaderStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("247")).Padding(0, 1)
+	tableBorderStyle = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color("238"))
+	selStyle         = lipgloss.NewStyle().Bold(true).Background(lipgloss.Color("236")).Foreground(lipgloss.Color("255"))
+	altStyle         = lipgloss.NewStyle().Background(lipgloss.Color("235"))
+
+	// Row states
+	goodStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("42"))
+	badStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("203"))
+
+	// Detail
+	detailBorderStyle = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color("238")).Padding(0, 1)
+	mutedStyle        = lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
+	dimStyle          = lipgloss.NewStyle().Foreground(lipgloss.Color("238"))
+
+	// Provider colors
+	provAnth = lipgloss.NewStyle().Foreground(lipgloss.Color("215"))
+	provOAI  = lipgloss.NewStyle().Foreground(lipgloss.Color("81"))
+	provOC   = lipgloss.NewStyle().Foreground(lipgloss.Color("111"))
+
+	// Sparkline
+	sparkHigh = lipgloss.NewStyle().Foreground(lipgloss.Color("214"))
+	sparkLow  = lipgloss.NewStyle().Foreground(lipgloss.Color("58"))
 )
 
+const sparkBlocks = "▁▂▃▄▅▆▇█"
+
 type row struct {
-	trace       int64
-	time        time.Time
-	provider    string
-	model       string
-	status      int
-	streaming   bool
-	inFlight    bool
-	inTok       int
-	outTok      int
-	cost        float64
-	duration    time.Duration
-	prompt      string
-	response    string
-	err         string
+	trace     int64
+	time      time.Time
+	provider  string
+	model     string
+	status    int
+	streaming bool
+	inFlight  bool
+	inTok     int
+	outTok    int
+	cost      float64
+	duration  time.Duration
+	prompt    string
+	response  string
+	err       string
 }
 
 type tickMsg time.Time
 type eventMsg struct{ e event.Event }
 
 type Model struct {
-	store    *store.Store
-	bus      *event.Bus
-	sub      chan event.Event
-	port     int
+	store   *store.Store
+	bus     *event.Bus
+	sub     chan event.Event
+	port    int
 
 	rows     []*row
 	byTrace  map[int64]*row
 	maxRows  int
 	selected int
 
-	spinner   spinner.Model
-	viewport  viewport.Model
-	ready     bool
-	width     int
-	height    int
+	spinner  spinner.Model
+	viewport viewport.Model
+	ready    bool
+	width    int
+	height   int
 	focusList bool
 	lastTick  time.Time
 	costWin   []timeDurCost
-	quit      bool
+
+	// Sparkline data: cost per 2-second bucket, most recent last
+	sparkData   []float64
+	sparkBucket float64
+	sparkTick   int
+	quit        bool
 }
 
 type timeDurCost struct {
@@ -76,18 +107,19 @@ type timeDurCost struct {
 
 func New(s *store.Store, b *event.Bus, port int) Model {
 	sp := spinner.New(spinner.WithSpinner(spinner.MiniDot))
-	vp := viewport.New(80, 10)
+	vp := viewport.New(80, 8)
 	return Model{
-		store:    s,
-		bus:      b,
-		sub:      b.Subscribe(),
-		port:     port,
-		byTrace:  make(map[int64]*row),
-		maxRows:  100,
-		spinner:  sp,
-		viewport: vp,
+		store:     s,
+		bus:       b,
+		sub:       b.Subscribe(),
+		port:      port,
+		byTrace:   make(map[int64]*row),
+		maxRows:   100,
+		spinner:   sp,
+		viewport:  vp,
 		focusList: true,
-		lastTick: time.Now(),
+		lastTick:  time.Now(),
+		sparkData: make([]float64, 0, 40),
 	}
 }
 
@@ -113,12 +145,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
-		m.viewport.Width = msg.Width
-		m.viewport.Height = max(6, msg.Height/3)
+		m.viewport.Width = msg.Width - 4
+		m.viewport.Height = max(5, m.height/4)
 		m.ready = true
 	case tickMsg:
 		m.lastTick = time.Now()
 		m.pruneCostWindow()
+		m.updateSpark()
 		return m, tea.Batch(tickCmd(), m.spinner.Tick)
 	case spinner.TickMsg:
 		var cmd tea.Cmd
@@ -196,6 +229,7 @@ func (m *Model) applyEvent(e event.Event) {
 	r.err = e.Err
 	if e.CostUSD > 0 {
 		m.costWin = append(m.costWin, timeDurCost{t: e.Time, cost: e.CostUSD})
+		m.sparkBucket += e.CostUSD
 	}
 	if m.selected >= len(m.rows) {
 		m.selected = len(m.rows) - 1
@@ -213,6 +247,20 @@ func (m *Model) pruneCostWindow() {
 	m.costWin = keep
 }
 
+// updateSpark accumulates cost into a 2-second bucket, then appends it to the
+// sparkline data when the bucket is full. Keeps the last 40 buckets (80s).
+func (m *Model) updateSpark() {
+	m.sparkTick++
+	if m.sparkTick >= 4 { // 4 ticks × 500ms = 2s per bucket
+		m.sparkData = append(m.sparkData, m.sparkBucket)
+		if len(m.sparkData) > 40 {
+			m.sparkData = m.sparkData[1:]
+		}
+		m.sparkBucket = 0
+		m.sparkTick = 0
+	}
+}
+
 func (m Model) burnPerHour() float64 {
 	var sum float64
 	for _, c := range m.costWin {
@@ -223,117 +271,195 @@ func (m Model) burnPerHour() float64 {
 
 func (m Model) View() string {
 	if !m.ready {
-		return "starting agenttop..."
+		return "  starting agenttop..."
 	}
 
 	cost, in, out, reqs, inFlight := m.store.Stats()
 	burn := m.burnPerHour()
 
-	header := titleStyle.Render("agenttop") + mutedStyle.Render(fmt.Sprintf("  :%d", m.port)) +
-		"   " + costStyle.Render(fmt.Sprintf("$%.4f", cost)) +
-		mutedStyle.Render(fmt.Sprintf("  in %d  out %d  reqs %d", in, out, reqs)) +
-		"   " + goodStyle.Render(fmt.Sprintf("%d live", inFlight)) +
-		mutedStyle.Render(fmt.Sprintf("  burn $%.2f/h", burn))
-	headerLine := lipgloss.NewStyle().Width(m.width).Render(header)
+	// ── Header bar ──
+	header := m.renderHeader(cost, in, out, reqs, inFlight, burn)
 
-	// table
-	cols := []int{min(22, m.width/6), 6, 10, 8, 9, 9}
-	head := padRow([]string{"model", "prov", "status", "in", "out", "cost"}, cols)
-	table := hdrStyle.Render(head)
-	var lines []string
-	start := 0
-	if len(m.rows) > m.height-12 {
-		start = len(m.rows) - (m.height - 12)
+	// ── Sparkline ──
+	spark := m.renderSparkline()
+
+	// ── Table ──
+	table := m.renderTable()
+
+	// ── Detail ──
+	detail := m.renderDetail()
+
+	// ── Footer ──
+	footer := m.renderFooter()
+
+	return strings.Join([]string{header, spark, table, detail, footer}, "\n")
+}
+
+func (m Model) renderHeader(cost float64, in, out, reqs, inFlight int, burn float64) string {
+	brand := brandStyle.Render("agenttop")
+
+	stat := func(label, value string, valStyle lipgloss.Style) string {
+		return statBoxStyle.Render(
+			statLabelStyle.Render(label) + "\n" + valStyle.Render(value),
+		)
 	}
+
+	costBox := stat("TOTAL COST", fmt.Sprintf("$%.4f", cost), costValueStyle)
+	burnBox := stat("BURN/HR", fmt.Sprintf("$%.2f", burn), burnValueStyle)
+	liveBox := stat("LIVE", fmt.Sprintf("%d", inFlight), liveValueStyle)
+	tokBox := stat("TOKENS", fmt.Sprintf("%d↑ %d↓", in, out), statValueStyle)
+	reqBox := stat("REQUESTS", fmt.Sprintf("%d", reqs), statValueStyle)
+
+	statsRow := lipgloss.JoinHorizontal(lipgloss.Top, costBox, burnBox, liveBox, tokBox, reqBox)
+	return brand + "\n" + statsRow
+}
+
+func (m Model) renderSparkline() string {
+	if len(m.sparkData) < 2 {
+		return mutedStyle.Render("  burn rate: collecting data...")
+	}
+
+	// Render sparkline as block characters
+	maxVal := 0.0
+	for _, v := range m.sparkData {
+		if v > maxVal {
+			maxVal = v
+		}
+	}
+	if maxVal == 0 {
+		maxVal = 1
+	}
+
+	var b strings.Builder
+	b.WriteString(mutedStyle.Render("  burn  "))
+	for _, v := range m.sparkData {
+		idx := int(v / maxVal * float64(len(sparkBlocks)-1))
+		if idx < 0 {
+			idx = 0
+		}
+		if idx >= len(sparkBlocks) {
+			idx = len(sparkBlocks) - 1
+		}
+		c := string(sparkBlocks[idx])
+		if v > 0 {
+			b.WriteString(sparkHigh.Render(c))
+		} else {
+			b.WriteString(sparkLow.Render(c))
+		}
+	}
+	b.WriteString(mutedStyle.Render(fmt.Sprintf("  $%.2f/h", m.burnPerHour())))
+	return b.String()
+}
+
+func (m Model) renderTable() string {
+	cols := []int{min(24, m.width/5), 7, 8, 8, 8, 10}
+	headers := []string{"MODEL", "PROV", "STATUS", "IN", "OUT", "COST"}
+	headerRow := tableHeaderStyle.Render(padRow(headers, cols))
+
+	var lines []string
+	lines = append(lines, headerRow)
+
+	maxVisible := m.height - 16
+	if maxVisible < 3 {
+		maxVisible = 3
+	}
+	start := 0
+	if len(m.rows) > maxVisible {
+		start = len(m.rows) - maxVisible
+	}
+
 	for i := start; i < len(m.rows); i++ {
 		r := m.rows[i]
 		status := ""
 		switch {
 		case r.inFlight:
-			status = m.spinner.View() + "stream"
+			status = m.spinner.View() + " live"
 		case r.err != "":
-			status = "ERR"
+			status = badStyle.Render("ERR")
 		default:
-			status = fmt.Sprintf("%d", r.status)
+			status = goodStyle.Render(fmt.Sprintf("%d", r.status))
 		}
-		prov := r.provider
-		if r.provider == "anthropic" {
-			prov = "anth"
-		} else if r.provider == "openai" {
-			prov = "oai"
-		}
+
+		prov := providerBadge(r.provider)
+
 		costStr := fmt.Sprintf("$%.4f", r.cost)
 		if r.inFlight {
-			costStr = "..."
+			costStr = mutedStyle.Render("...")
+		} else if r.cost > 0 {
+			costStr = costValueStyle.Render(costStr)
 		}
+
 		model := r.model
 		if model == "" {
 			model = "-"
 		}
+
 		rowStr := padRow([]string{model, prov, status, fmt.Sprintf("%d", r.inTok), fmt.Sprintf("%d", r.outTok), costStr}, cols)
+
 		if i == m.selected && m.focusList {
 			rowStr = selStyle.Render(rowStr)
-		} else if r.inFlight {
-			rowStr = goodStyle.Render(rowStr)
-		} else if r.err != "" {
-			rowStr = badStyle.Render(rowStr)
+		} else if (i-start)%2 == 1 {
+			rowStr = altStyle.Render(rowStr)
 		}
 		lines = append(lines, rowStr)
 	}
-	if len(lines) == 0 {
-		lines = append(lines, mutedStyle.Render("  waiting for requests... run your agent with the base URL shown above"))
-	}
-	body := table + "\n" + strings.Join(lines, "\n")
 
-	// detail
-	detail := m.detailView()
-
-	footer := dimStyle.Render("q quit  •  ↑↓/jk select  •  tab/enter toggle detail  •  G bottom")
-	focus := mutedStyle.Render("focus: list")
-	if !m.focusList {
-		focus = mutedStyle.Render("focus: detail")
+	if len(lines) == 1 {
+		lines = append(lines, mutedStyle.Render("  waiting for requests..."))
 	}
 
-	return strings.Join([]string{
-		headerLine,
-		body,
-		"",
-		hdrStyle.Render(" detail"),
-		detail,
-		footer + "   " + focus,
-	}, "\n")
+	inner := strings.Join(lines, "\n")
+	return tableBorderStyle.Render(inner)
 }
 
-func (m Model) detailView() string {
+func (m Model) renderDetail() string {
 	if len(m.rows) == 0 || m.selected < 0 || m.selected >= len(m.rows) {
-		return mutedStyle.Render("  (no request selected)")
+		return detailBorderStyle.Render(mutedStyle.Render(" select a request to see details"))
 	}
 	r := m.rows[m.selected]
 	var b strings.Builder
-	fmt.Fprintf(&b, "model: %s   provider: %s   status: %s   dur: %s\n",
-		r.model, r.provider, statusLabel(r), r.duration)
-	fmt.Fprintf(&b, "tokens: in %d  out %d   cost: $%.4f\n", r.inTok, r.outTok, r.cost)
-	b.WriteString(mutedStyle.Render("prompt:\n") + wrap(r.prompt) + "\n")
-	b.WriteString(mutedStyle.Render("response:\n") + wrap(r.response))
+	fmt.Fprintf(&b, "%s  %s  %s  %s\n",
+		statLabelStyle.Render("model:"), r.model,
+		statLabelStyle.Render("dur:"), r.duration)
+	fmt.Fprintf(&b, "%s %d↓  %d↑  %s $%.4f\n",
+		statLabelStyle.Render("tokens:"), r.inTok, r.outTok,
+		statLabelStyle.Render("cost:"), r.cost)
+	b.WriteString(mutedStyle.Render("prompt: ") + wrapText(r.prompt, m.width-6) + "\n")
+	b.WriteString(mutedStyle.Render("response: ") + wrapText(r.response, m.width-6))
 	m.viewport.SetContent(b.String())
-	return m.viewport.View()
+	return detailBorderStyle.Render(m.viewport.View())
 }
 
-func statusLabel(r *row) string {
-	if r.inFlight {
-		return "streaming"
+func (m Model) renderFooter() string {
+	footer := dimStyle.Render(" q quit  •  ↑↓/jk select  •  tab toggle detail  •  G bottom ")
+	focus := mutedStyle.Render("list")
+	if !m.focusList {
+		focus = mutedStyle.Render("detail")
 	}
-	if r.err != "" {
-		return "error: " + r.err
-	}
-	return fmt.Sprintf("%d", r.status)
+	return footer + "  " + focus
 }
 
-func wrap(s string) string {
+func providerBadge(provider string) string {
+	switch provider {
+	case "anthropic":
+		return provAnth.Render("anth")
+	case "openai":
+		return provOAI.Render("oai")
+	case "opencode", "opencode-go":
+		return provOC.Render("oc")
+	default:
+		return mutedStyle.Render(provider[:min(4, len(provider))])
+	}
+}
+
+func wrapText(s string, width int) string {
 	if s == "" {
 		return mutedStyle.Render("(empty)")
 	}
-	return s
+	if len([]rune(s)) <= width {
+		return s
+	}
+	return string([]rune(s)[:width-1]) + "…"
 }
 
 func padRow(vals []string, cols []int) string {
@@ -344,10 +470,12 @@ func padRow(vals []string, cols []int) string {
 			w = cols[i]
 		}
 		cell := v
-		if visibleLen(v) > w {
+		vl := visibleLen(v)
+		if vl > w {
 			cell = truncate(v, w-1) + "…"
+			vl = visibleLen(cell)
 		}
-		b.WriteString(cell + strings.Repeat(" ", max(1, w-visibleLen(cell))))
+		b.WriteString(cell + strings.Repeat(" ", max(1, w-vl)))
 	}
 	return b.String()
 }

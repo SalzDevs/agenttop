@@ -18,6 +18,12 @@ import (
 	"github.com/SalzDevs/agenttop/internal/tui"
 )
 
+var (
+	version = "dev"
+	commit  = "none"
+	date    = "unknown"
+)
+
 const usage = `agenttop — htop for AI coding agents
 
 Watch what Claude Code, Cursor, Codex, OpenCode and Gemini CLI are doing
@@ -72,6 +78,8 @@ func main() {
 	case "wait":
 		// `agenttop wait` → block until the proxy is listening (used by tmux bottom pane).
 		launch.WaitPort(*port)
+	case "version", "-v", "--version":
+		fmt.Printf("agenttop %s (commit: %s, built: %s)\n", version, commit, date)
 	case "help", "-h", "--help":
 		fmt.Fprint(os.Stdout, usage)
 	default:

@@ -19,8 +19,11 @@ You've got 3 agents running. One is burning your $200 Claude plan. One is stuck 
 ## Install
 
 ```bash
-# macOS / Linux
+# macOS / Linux (one command)
 curl -sSf https://raw.githubusercontent.com/SalzDevs/agenttop/main/scripts/install.sh | bash
+
+# Homebrew
+brew install SalzDevs/tap/agenttop
 
 # Go
 go install github.com/SalzDevs/agenttop@latest

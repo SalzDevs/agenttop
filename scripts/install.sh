@@ -1,5 +1,5 @@
 #!/bin/sh
-# agenttop installer — downloads the latest release binary from GitHub.
+# agenttop installer — downloads the latest release from GitHub.
 set -e
 
 OWNER="SalzDevs"
@@ -13,34 +13,47 @@ case "$OS" in
   *) echo "unsupported OS: $OS" >&2; exit 1 ;;
 esac
 case "$ARCH" in
-  x86_64|amd64) arch="amd64" ;;
+  x86_64|amd64) arch="x86_64" ;;
   arm64|aarch64) arch="arm64" ;;
   *) echo "unsupported arch: $ARCH" >&2; exit 1 ;;
 esac
 
 if command -v curl >/dev/null 2>&1; then
   fetch() { curl -fsSL "$1"; }
-else
+  download() { curl -fsSL -o "$1" "$2"; }
+elif command -v wget >/dev/null 2>&1; then
   fetch() { wget -qO- "$1"; }
+  download() { wget -qO "$1" "$2"; }
+else
+  echo "need curl or wget" >&2; exit 1
 fi
 
 tag="$(fetch "https://api.github.com/repos/${OWNER}/${REPO}/releases/latest" | grep '"tag_name"' | sed -E 's/.*"([^"]+)".*/\1/')"
 if [ -z "$tag" ]; then
-  echo "could not determine latest release; build from source: go install github.com/${OWNER}/${REPO}@latest" >&2
+  echo "could not determine latest release; install via go: go install github.com/${OWNER}/${REPO}@latest" >&2
   exit 1
 fi
 
-url="https://github.com/${OWNER}/${REPO}/releases/download/${tag}/agenttop-${os}-${arch}"
+archive="agenttop-${os}-${arch}.tar.gz"
+url="https://github.com/${OWNER}/${REPO}/releases/download/${tag}/${archive}"
 echo "Downloading agenttop ${tag} (${os}/${arch})..."
-fetch "$url" -o /tmp/agenttop-download || { echo "no prebuilt binary for ${os}/${arch}; building from source..." >&2; go install "github.com/${OWNER}/${REPO}@${tag}" && exit 0; }
-chmod +x /tmp/agenttop-download
+tmpdir="$(mktemp -d)"
+trap 'rm -rf "$tmpdir"' EXIT
+
+download "${tmpdir}/${archive}" "$url" || {
+  echo "no prebuilt binary for ${os}/${arch}; building from source..." >&2
+  go install "github.com/${OWNER}/${REPO}@${tag}"
+  exit 0
+}
+
+tar xzf "${tmpdir}/${archive}" -C "${tmpdir}"
 
 dest="${DESTDIR:-${HOME}/.local/bin}"
 mkdir -p "$dest"
-mv /tmp/agenttop-download "$dest/agenttop"
-echo "installed agenttop to ${dest}/agenttop"
+mv "${tmpdir}/agenttop" "${dest}/agenttop"
+chmod +x "${dest}/agenttop"
+echo "installed agenttop ${tag} to ${dest}/agenttop"
 case ":$PATH:" in
   *":$dest:"*) ;;
   *) echo "note: $dest is not on your PATH — add it to your shell profile" >&2 ;;
 esac
-agenttop --help 2>/dev/null || true

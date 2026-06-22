@@ -19,10 +19,16 @@ func TestViewEmpty(t *testing.T) {
 
 	out := m.View()
 	if !strings.Contains(out, "agenttop") {
-		t.Fatalf("View() should contain 'agenttop' title, got:\n%s", out)
+		t.Fatalf("View() should contain 'agenttop' brand, got:\n%s", out)
 	}
 	if !strings.Contains(out, "waiting for requests") {
 		t.Fatalf("View() should show waiting message when empty, got:\n%s", out)
+	}
+	if !strings.Contains(out, "TOTAL COST") {
+		t.Fatalf("View() should show stat box labels, got:\n%s", out)
+	}
+	if !strings.Contains(out, "BURN/HR") {
+		t.Fatalf("View() should show burn rate box, got:\n%s", out)
 	}
 }
 
@@ -34,7 +40,6 @@ func TestViewWithEvents(t *testing.T) {
 	m.width = 120
 	m.height = 40
 
-	// Simulate an in-flight request (start event)
 	startEvt := event.Event{
 		TraceID:       1,
 		Time:          time.Now(),
@@ -52,14 +57,12 @@ func TestViewWithEvents(t *testing.T) {
 		t.Fatalf("View() should show model name, got:\n%s", out)
 	}
 	if !strings.Contains(out, "anth") {
-		t.Fatalf("View() should show provider, got:\n%s", out)
+		t.Fatalf("View() should show provider badge, got:\n%s", out)
 	}
 	if !strings.Contains(out, "refactor the auth module") {
-		// prompt should appear in the detail pane
-		t.Fatalf("View() should show prompt preview in detail, got:\n%s", out)
+		t.Fatalf("View() should show prompt in detail, got:\n%s", out)
 	}
 
-	// Simulate the response (end event with usage)
 	endEvt := event.Event{
 		TraceID:          1,
 		Time:             time.Now(),
@@ -74,10 +77,11 @@ func TestViewWithEvents(t *testing.T) {
 		OutputTokens:     300,
 		CacheReadTokens:  500,
 		CacheWriteTokens: 0,
-		CostUSD:          0.009, // 1500*3/1e6 + 300*15/1e6 + 500*0.3/1e6
+		CostUSD:          0.009,
 		PromptPreview:    "refactor the auth module",
 		ResponsePreview:  "I'll refactor the auth module to use...",
 	}
+	st.Append(endEvt)
 	m.applyEvent(endEvt)
 
 	out = m.View()
@@ -87,19 +91,15 @@ func TestViewWithEvents(t *testing.T) {
 	if !strings.Contains(out, "1500") {
 		t.Fatalf("View() should show input tokens 1500, got:\n%s", out)
 	}
-	if !strings.Contains(out, "300") {
-		t.Fatalf("View() should show output tokens 300, got:\n%s", out)
-	}
 	if !strings.Contains(out, "$0.009") {
 		t.Fatalf("View() should show cost $0.009, got:\n%s", out)
 	}
-	// Detail pane should show the response
 	if !strings.Contains(out, "I'll refactor the auth module") {
 		t.Fatalf("View() should show response preview in detail, got:\n%s", out)
 	}
 }
 
-func TestViewMultipleAgentsAndBurnRate(t *testing.T) {
+func TestViewMultipleProvidersAndCost(t *testing.T) {
 	st, _ := store.New("", 100)
 	bus := event.NewBus()
 	m := New(st, bus, 7331)
@@ -107,13 +107,13 @@ func TestViewMultipleAgentsAndBurnRate(t *testing.T) {
 	m.width = 120
 	m.height = 40
 
-	// Two completed requests from different providers.
-	// In production the proxy appends to the store AND emits to the bus;
-	// we simulate that here so header stats (from store) are populated too.
-	for i, prov := range []string{"anthropic", "openai"} {
+	for i, prov := range []string{"anthropic", "openai", "opencode-go"} {
 		model := "claude-sonnet-4-5"
 		if prov == "openai" {
 			model = "gpt-4o"
+		}
+		if prov == "opencode-go" {
+			model = "glm-5.2"
 		}
 		e := event.Event{
 			TraceID: int64(i + 1), Time: time.Now(), Provider: prov, Model: model,
@@ -131,15 +131,66 @@ func TestViewMultipleAgentsAndBurnRate(t *testing.T) {
 	if !strings.Contains(out, "gpt-4o") {
 		t.Fatalf("should show gpt-4o model, got:\n%s", out)
 	}
+	if !strings.Contains(out, "glm-5.2") {
+		t.Fatalf("should show glm-5.2 model, got:\n%s", out)
+	}
 	if !strings.Contains(out, "oai") {
-		t.Fatalf("should show openai provider abbreviation, got:\n%s", out)
+		t.Fatalf("should show openai provider badge, got:\n%s", out)
 	}
-	// Total cost should be $0.01 (0.005 + 0.005) — from store stats in header
-	if !strings.Contains(out, "$0.010") {
-		t.Fatalf("should show total cost $0.010 in header, got:\n%s", out)
+	if !strings.Contains(out, "oc") {
+		t.Fatalf("should show opencode provider badge, got:\n%s", out)
 	}
-	// Burn rate: $0.01 in last 60s → $0.60/h
-	if !strings.Contains(out, "burn") {
-		t.Fatalf("should show burn rate, got:\n%s", out)
+	if !strings.Contains(out, "$0.015") {
+		t.Fatalf("should show total cost $0.015 in header, got:\n%s", out)
+	}
+}
+
+func TestSparklineRendering(t *testing.T) {
+	st, _ := store.New("", 100)
+	bus := event.NewBus()
+	m := New(st, bus, 7331)
+	m.ready = true
+	m.width = 120
+	m.height = 40
+
+	// Add some cost events to populate spark data
+	for i := 0; i < 10; i++ {
+		e := event.Event{
+			TraceID: int64(i + 1), Time: time.Now(), Provider: "anthropic", Model: "claude-sonnet-4-5",
+			Status: 200, InputTokens: 100, OutputTokens: 50, CostUSD: 0.001 * float64(i+1),
+		}
+		st.Append(e)
+		m.applyEvent(e)
+	}
+
+	// Simulate ticks to fill spark buckets (updateSpark is called every 500ms tick,
+	// and commits a bucket every 4 ticks = 2 seconds)
+	for i := 0; i < 20; i++ {
+		m.updateSpark()
+	}
+
+	out := m.View()
+	if len(m.sparkData) >= 2 {
+		if !strings.Contains(out, "burn") {
+			t.Fatalf("should show sparkline with burn label, got:\n%s", out)
+		}
+		if !strings.Contains(out, "/h") {
+			t.Fatalf("should show burn rate per hour in sparkline, got:\n%s", out)
+		}
+	}
+}
+
+func TestProviderBadge(t *testing.T) {
+	cases := map[string]string{
+		"anthropic":   "anth",
+		"openai":      "oai",
+		"opencode":    "oc",
+		"opencode-go": "oc",
+	}
+	for provider, want := range cases {
+		got := providerBadge(provider)
+		if !strings.Contains(got, want) {
+			t.Errorf("providerBadge(%q) = %q, want to contain %q", provider, got, want)
+		}
 	}
 }

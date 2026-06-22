@@ -1,0 +1,68 @@
+version: 2
+
+project_name: agenttop
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: agenttop
+    main: .
+    binary: agenttop
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w -X main.version={{.Version}} -X main.commit={{.Commit}} -X main.date={{.Date}}
+
+archives:
+  - id: default
+    ids: [agenttop]
+    name_template: >-
+      {{ .ProjectName }}-
+      {{- if eq .Os "darwin" }}darwin
+      {{- else }}{{ .Os }}{{ end }}-
+      {{- if eq .Arch "amd64" }}x86_64
+      {{- else }}{{ .Arch }}{{ end }}
+    formats: [tar.gz]
+    files:
+      - README.md
+      - LICENSE
+
+checksum:
+  name_template: checksums.txt
+
+snapshot:
+  version_template: "{{ .Tag }}-next"
+
+changelog:
+  sort: asc
+  use: github
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore:"
+      - "Merge pull request"
+      - "Merge branch"
+  groups:
+    - title: "New Features"
+      regexp: "^feat:"
+    - title: "Bug Fixes"
+      regexp: "^fix:"
+    - title: "Other Changes"
+      order: 999
+
+release:
+  github:
+    owner: SalzDevs
+    name: agenttop
+  draft: true
+  prerelease: auto
+  name_template: "{{ .Tag }}"
