@@ -21,9 +21,6 @@ func TestViewEmpty(t *testing.T) {
 	if !strings.Contains(out, "agenttop") {
 		t.Fatalf("View() should contain 'agenttop' brand, got:\n%s", out)
 	}
-	if !strings.Contains(out, "waiting for requests") {
-		t.Fatalf("View() should show waiting message when empty, got:\n%s", out)
-	}
 	if !strings.Contains(out, "TOTAL COST") {
 		t.Fatalf("View() should show stat box labels, got:\n%s", out)
 	}
@@ -54,7 +51,7 @@ func TestViewWithEvents(t *testing.T) {
 
 	out := m.View()
 	if !strings.Contains(out, "claude-sonnet-4-5") {
-		t.Fatalf("View() should show model name, got:\n%s", out)
+		t.Fatalf("View() should show model name in detail, got:\n%s", out)
 	}
 	if !strings.Contains(out, "anthropic") {
 		t.Fatalf("View() should show provider in detail pane, got:\n%s", out)
@@ -85,14 +82,8 @@ func TestViewWithEvents(t *testing.T) {
 	m.applyEvent(endEvt)
 
 	out = m.View()
-	if !strings.Contains(out, "200") {
-		t.Fatalf("View() should show status 200, got:\n%s", out)
-	}
-	if !strings.Contains(out, "1500") {
-		t.Fatalf("View() should show input tokens 1500, got:\n%s", out)
-	}
 	if !strings.Contains(out, "$0.009") {
-		t.Fatalf("View() should show cost $0.009, got:\n%s", out)
+		t.Fatalf("View() should show cost $0.009 in detail, got:\n%s", out)
 	}
 	if !strings.Contains(out, "I'll refactor the auth module") {
 		t.Fatalf("View() should show response preview in detail, got:\n%s", out)
@@ -125,17 +116,19 @@ func TestViewMultipleProvidersAndCost(t *testing.T) {
 	}
 
 	out := m.View()
-	if !strings.Contains(out, "claude-sonnet-4-5") {
-		t.Fatalf("should show claude model, got:\n%s", out)
-	}
-	if !strings.Contains(out, "gpt-4o") {
-		t.Fatalf("should show gpt-4o model, got:\n%s", out)
-	}
-	if !strings.Contains(out, "glm-5.2") {
-		t.Fatalf("should show glm-5.2 model, got:\n%s", out)
-	}
+	// With the table removed, model names only appear in the detail pane
+	// (showing the selected row). The header shows aggregate stats.
 	if !strings.Contains(out, "$0.015") {
 		t.Fatalf("should show total cost $0.015 in header, got:\n%s", out)
+	}
+	if !strings.Contains(out, "3000") {
+		t.Fatalf("should show total input tokens 3000 in header, got:\n%s", out)
+	}
+	if !strings.Contains(out, "600") {
+		t.Fatalf("should show total output tokens 600 in header, got:\n%s", out)
+	}
+	if !strings.Contains(out, "REQUESTS") {
+		t.Fatalf("should show requests stat box, got:\n%s", out)
 	}
 }
 

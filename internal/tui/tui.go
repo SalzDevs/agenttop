@@ -26,16 +26,6 @@ var (
 	burnValueStyle  = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("203"))
 	liveValueStyle  = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("42"))
 
-	// Table
-	tableHeaderStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("247")).Padding(0, 1)
-	tableBorderStyle = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color("238"))
-	selStyle         = lipgloss.NewStyle().Bold(true).Background(lipgloss.Color("236")).Foreground(lipgloss.Color("255"))
-	altStyle         = lipgloss.NewStyle().Background(lipgloss.Color("235"))
-
-	// Row states
-	goodStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("42"))
-	badStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("203"))
-
 	// Detail
 	detailBorderStyle = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color("238")).Padding(0, 1)
 	mutedStyle        = lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
@@ -283,16 +273,13 @@ func (m Model) View() string {
 	// ── Sparkline ──
 	spark := m.renderSparkline()
 
-	// ── Table ──
-	table := m.renderTable()
-
 	// ── Detail ──
 	detail := m.renderDetail()
 
 	// ── Footer ──
 	footer := m.renderFooter()
 
-	return strings.Join([]string{header, spark, table, detail, footer}, "\n")
+	return strings.Join([]string{header, spark, detail, footer}, "\n")
 }
 
 func (m Model) renderHeader(cost float64, in, out, reqs, inFlight int, burn float64) string {
@@ -351,65 +338,6 @@ func (m Model) renderSparkline() string {
 	return b.String()
 }
 
-func (m Model) renderTable() string {
-	cols := []int{min(28, m.width/4), 10, 8, 8, 12}
-	headers := []string{"MODEL", "STATUS", "IN", "OUT", "COST"}
-	headerRow := tableHeaderStyle.Render(padRow(headers, cols))
-
-	var lines []string
-	lines = append(lines, headerRow)
-
-	maxVisible := m.height - 16
-	if maxVisible < 3 {
-		maxVisible = 3
-	}
-	start := 0
-	if len(m.rows) > maxVisible {
-		start = len(m.rows) - maxVisible
-	}
-
-	for i := start; i < len(m.rows); i++ {
-		r := m.rows[i]
-		status := ""
-		switch {
-		case r.inFlight:
-			status = m.spinner.View() + " live"
-		case r.err != "":
-			status = badStyle.Render("ERR")
-		default:
-			status = goodStyle.Render(fmt.Sprintf("%d", r.status))
-		}
-
-		costStr := fmt.Sprintf("$%.4f", r.cost)
-		if r.inFlight {
-			costStr = mutedStyle.Render("...")
-		} else if r.cost > 0 {
-			costStr = costValueStyle.Render(costStr)
-		}
-
-		model := r.model
-		if model == "" {
-			model = "-"
-		}
-
-		rowStr := padRow([]string{model, status, fmt.Sprintf("%d", r.inTok), fmt.Sprintf("%d", r.outTok), costStr}, cols)
-
-		if i == m.selected && m.focusList {
-			rowStr = selStyle.Render(rowStr)
-		} else if (i-start)%2 == 1 {
-			rowStr = altStyle.Render(rowStr)
-		}
-		lines = append(lines, rowStr)
-	}
-
-	if len(lines) == 1 {
-		lines = append(lines, mutedStyle.Render("  waiting for requests..."))
-	}
-
-	inner := strings.Join(lines, "\n")
-	return tableBorderStyle.Render(inner)
-}
-
 func (m Model) renderDetail() string {
 	if len(m.rows) == 0 || m.selected < 0 || m.selected >= len(m.rows) {
 		return detailBorderStyle.Render(mutedStyle.Render(" select a request to see details"))
@@ -459,39 +387,6 @@ func wrapText(s string, width int) string {
 		return s
 	}
 	return string([]rune(s)[:width-1]) + "…"
-}
-
-func padRow(vals []string, cols []int) string {
-	var b strings.Builder
-	for i, v := range vals {
-		w := 0
-		if i < len(cols) {
-			w = cols[i]
-		}
-		cell := v
-		vl := visibleLen(v)
-		if vl > w {
-			cell = truncate(v, w-1) + "…"
-			vl = visibleLen(cell)
-		}
-		b.WriteString(cell + strings.Repeat(" ", max(1, w-vl)))
-	}
-	return b.String()
-}
-
-func truncate(s string, n int) string {
-	if visibleLen(s) <= n {
-		return s
-	}
-	r := []rune(s)
-	if n <= 0 {
-		return ""
-	}
-	return string(r[:n])
-}
-
-func visibleLen(s string) int {
-	return len([]rune(s))
 }
 
 func max(a, b int) int {
