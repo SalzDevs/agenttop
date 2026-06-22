@@ -184,7 +184,7 @@ func buildTmuxCommands(self, sess string, agentCmd []string, port int) []tmuxSte
 		steps = append(steps, tmuxStep{args: []string{"tmux", "set-environment", "-t", sess, "OPENCODE_CONFIG_CONTENT", opencodeConfigContent(port)}})
 	}
 	steps = append(steps,
-		tmuxStep{args: []string{"tmux", "split-window", "-v", "-p", "60", "-t", sess, paneShell}},
+		tmuxStep{args: []string{"tmux", "split-window", "-v", "-p", "75", "-t", sess, paneShell}},
 	)
 	return steps
 }

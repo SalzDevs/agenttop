@@ -125,7 +125,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
 		m.viewport.Width = msg.Width - 4
-		m.viewport.Height = max(5, m.height/4)
+		m.viewport.Height = 4
 		m.ready = true
 	case tickMsg:
 		m.pruneCostWindow()
@@ -295,9 +295,9 @@ func (m Model) renderList() string {
 		return mutedStyle.Render("  waiting for requests...")
 	}
 
-	maxVisible := m.height - 18
-	if maxVisible < 3 {
-		maxVisible = 3
+	maxVisible := 4
+	if m.height < 20 {
+		maxVisible = 2
 	}
 	start := 0
 	if len(m.rows) > maxVisible {

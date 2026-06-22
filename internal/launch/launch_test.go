@@ -141,7 +141,7 @@ func TestBuildTmuxCommandsClaude(t *testing.T) {
 	if !strings.Contains(splitWindow, "tmux kill-session -t 'agenttop'") {
 		t.Fatalf("pane must kill session on exit: %s", splitWindow)
 	}
-	if !strings.HasPrefix(splitWindow, "tmux split-window -v -p 60 -t agenttop ") {
+	if !strings.HasPrefix(splitWindow, "tmux split-window -v -p 75 -t agenttop ") {
 		t.Fatalf("unexpected split-window argv: %s", splitWindow)
 	}
 }
