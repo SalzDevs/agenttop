@@ -167,6 +167,7 @@ type tmuxStep struct{ args []string }
 func buildTmuxCommands(self, sess string, agentCmd []string, port int) []tmuxStep {
 	baseURL := fmt.Sprintf("http://127.0.0.1:%d", port)
 	baseURLv1 := fmt.Sprintf("http://127.0.0.1:%d/v1", port)
+
 	monitorShell := shellQuote(self) + fmt.Sprintf(" --port %d monitor", port)
 	waitShell := shellQuote(self) + fmt.Sprintf(" --port %d wait", port)
 	agentShell := shellJoin(agentCmd)
@@ -180,12 +181,47 @@ func buildTmuxCommands(self, sess string, agentCmd []string, port int) []tmuxSte
 		{args: []string{"tmux", "set-environment", "-t", sess, "OPENAI_BASE_URL", baseURLv1}},
 		{args: []string{"tmux", "set-environment", "-t", sess, "OPENAI_API_BASE", baseURLv1}},
 	}
+
 	if len(agentCmd) > 0 && isOpencode(agentCmd[0]) {
-		steps = append(steps, tmuxStep{args: []string{"tmux", "set-environment", "-t", sess, "OPENCODE_CONFIG_CONTENT", opencodeConfigContent(port)}})
+		steps = append(steps,
+			tmuxStep{
+				args: []string{
+					"tmux",
+					"set-environment",
+					"-t",
+					sess,
+					"OPENCODE_CONFIG_CONTENT",
+					opencodeConfigContent(port),
+				},
+			},
+		)
 	}
+
 	steps = append(steps,
-		tmuxStep{args: []string{"tmux", "split-window", "-v", "-p", "75", "-t", sess, paneShell}},
+		// Create the bottom (agent) pane.
+		tmuxStep{
+			args: []string{
+				"tmux",
+				"split-window",
+				"-v",
+				"-t",
+				sess,
+				paneShell,
+			},
+		},
+		// Resize the top (monitor) pane to 5 rows.
+		tmuxStep{
+			args: []string{
+				"tmux",
+				"resize-pane",
+				"-t",
+				sess + ":0.0",
+				"-y",
+				"5",
+			},
+		},
 	)
+
 	return steps
 }
 

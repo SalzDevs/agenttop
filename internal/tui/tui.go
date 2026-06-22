@@ -23,7 +23,6 @@ var (
 	purple = lipgloss.Color("#A78BFA") // sparkline mid, secondary accent
 	muted  = lipgloss.Color("#6B7280") // labels, secondary text
 	dim    = lipgloss.Color("#3A3F47") // separators, sparkline low
-	bg     = lipgloss.Color("#111318") // background
 
 	// Brand — the sparkline logo rendered in cyan/purple/dim blocks
 	brandStyle = lipgloss.NewStyle().Foreground(cyan).Bold(true)
@@ -235,7 +234,7 @@ func (m Model) burnPerHour() float64 {
 
 func (m Model) View() string {
 	if !m.ready {
-		return "  starting agenttop..."
+		return "    " + mutedStyle.Render("starting agenttop…")
 	}
 
 	cost, in, out, reqs, inFlight := m.store.Stats()
@@ -245,7 +244,7 @@ func (m Model) View() string {
 	header := m.renderHeader(cost, in, out, reqs, inFlight, burn)
 
 	// ── Separator ──
-	sep := sepStyle.Render(strings.Repeat("─", m.width))
+	sep := "  " + sepStyle.Render(strings.Repeat("─", m.width-4))
 
 	// ── Request list ──
 	list := m.renderList()
@@ -253,25 +252,31 @@ func (m Model) View() string {
 	// ── Detail (latest request) ──
 	detail := m.renderDetail()
 
-	return strings.Join([]string{header, sep, list, detail}, "\n")
+	return strings.Join([]string{header, sep, list, "", detail}, "\n")
 }
 
 func (m Model) renderHeader(cost float64, in, out, reqs, inFlight int, burn float64) string {
 	// Line 1: logo (5 colored bars) + brand + key stats inline
 	logoRendered := sparkLow.Render("▁") + mutedStyle.Render("▃") + sparkMid.Render("▅") + sparkHigh.Render("▇█")
-	logoBrand := logoRendered + " " + brandStyle.Render("agenttop")
+	logoBrand := "  " + logoRendered + "  " + brandStyle.Render("agenttop")
 
 	stat := func(label, value string, valStyle lipgloss.Style) string {
 		return statLabelStyle.Render(label+" ") + valStyle.Render(value)
 	}
 
-	line1 := lipgloss.JoinHorizontal(lipgloss.Center,
+	line1 := "  " + lipgloss.JoinHorizontal(lipgloss.Center,
 		logoBrand,
+		"   ",
 		stat("cost", fmt.Sprintf("$%.4f", cost), costValueStyle),
+		"   ",
 		stat("burn", fmt.Sprintf("$%.2f/h", burn), burnValueStyle),
+		"   ",
 		stat("live", fmt.Sprintf("%d", inFlight), liveValueStyle),
+		"   ",
 		stat("in", fmt.Sprintf("%d", in), statValueStyle),
+		"   ",
 		stat("out", fmt.Sprintf("%d", out), statValueStyle),
+		"   ",
 		stat("reqs", fmt.Sprintf("%d", reqs), statValueStyle),
 	)
 
@@ -283,7 +288,7 @@ func (m Model) renderHeader(cost float64, in, out, reqs, inFlight int, burn floa
 
 func (m Model) renderSparkline() string {
 	if len(m.sparkData) < 2 {
-		return mutedStyle.Render("  collecting data...")
+		return "    " + mutedStyle.Render("collecting data…")
 	}
 
 	maxVal := 0.0
@@ -297,7 +302,7 @@ func (m Model) renderSparkline() string {
 	}
 
 	var b strings.Builder
-	b.WriteString(mutedStyle.Render("  "))
+	b.WriteString("    ")
 	for _, v := range m.sparkData {
 		idx := int(v / maxVal * float64(len(sparkBlocks)-1))
 		if idx < 0 {
@@ -316,7 +321,8 @@ func (m Model) renderSparkline() string {
 			b.WriteString(sparkLow.Render(c))
 		}
 	}
-	b.WriteString(mutedStyle.Render(fmt.Sprintf("  $%.2f/h", m.burnPerHour())))
+	b.WriteString("  ")
+	b.WriteString(sparkMid.Render(fmt.Sprintf("$%.2f/h", m.burnPerHour())))
 	return b.String()
 }
 
@@ -345,7 +351,7 @@ func statusSymbol(r *row) string {
 
 func (m Model) renderList() string {
 	if len(m.rows) == 0 {
-		return mutedStyle.Render("  waiting for requests...")
+		return "    " + mutedStyle.Render("waiting for requests…")
 	}
 
 	maxVisible := 4
@@ -367,25 +373,25 @@ func (m Model) renderList() string {
 
 		costStr := fmt.Sprintf("$%.4f", r.cost)
 		if r.inFlight {
-			costStr = mutedStyle.Render("...")
+			costStr = mutedStyle.Render("…")
 		} else if r.cost > 0 {
 			costStr = costValueStyle.Render(costStr)
 		}
 
 		durStr := fmt.Sprintf("%.2fs", r.duration.Seconds())
 		if r.inFlight {
-			durStr = inFlightStyle.Render(fmt.Sprintf("%.2fs", time.Since(r.time).Seconds())) + mutedStyle.Render("...")
+			durStr = inFlightStyle.Render(fmt.Sprintf("%.2fs", time.Since(r.time).Seconds())) + mutedStyle.Render("…")
 		} else {
 			durStr = mutedStyle.Render(durStr)
 		}
 
-		line := fmt.Sprintf("  %s %s  %s  %s  %s  %s",
+		line := fmt.Sprintf("    %s  %s   %s   %s  %s   %s  %s",
 			statusSymbol(r),
 			modelColor(fmt.Sprintf("%-22s", model), r.provider),
 			durStr,
-			mutedStyle.Render("in:")+fmt.Sprintf("%d", r.inTok),
-			mutedStyle.Render("out:")+fmt.Sprintf("%d", r.outTok),
-			costStr,
+			mutedStyle.Render("in")+fmt.Sprintf(" %d", r.inTok),
+			mutedStyle.Render("out")+fmt.Sprintf(" %d", r.outTok),
+			mutedStyle.Render("cost"), costStr,
 		)
 		lines = append(lines, line)
 	}
@@ -395,29 +401,33 @@ func (m Model) renderList() string {
 
 func (m Model) renderDetail() string {
 	if len(m.rows) == 0 {
-		return mutedStyle.Render("  waiting for requests...")
+		return "    " + mutedStyle.Render("waiting for requests…")
 	}
 	r := m.rows[len(m.rows)-1]
 	var b strings.Builder
 	durStr := fmt.Sprintf("%.2fs", r.duration.Seconds())
 	if r.inFlight {
-		durStr = inFlightStyle.Render(fmt.Sprintf("%.2fs", time.Since(r.time).Seconds())) + mutedStyle.Render(" (live)")
+		durStr = inFlightStyle.Render(fmt.Sprintf("%.2fs", time.Since(r.time).Seconds())) + mutedStyle.Render("  (live)")
 	} else {
 		durStr = mutedStyle.Render(durStr)
 	}
 
-	fmt.Fprintf(&b, "%s  %s  %s  %s  %s  %s\n",
-		mutedStyle.Render("model:"), modelColor(r.model, r.provider),
-		mutedStyle.Render("provider:"), mutedStyle.Render(r.provider),
-		mutedStyle.Render("dur:"), durStr)
-	fmt.Fprintf(&b, "%s %s  %s  %s %s\n",
-		mutedStyle.Render("tokens:"),
-		statValueStyle.Render(fmt.Sprintf("%d↑", r.inTok)),
-		statValueStyle.Render(fmt.Sprintf("%d↓", r.outTok)),
-		mutedStyle.Render("cost:"),
-		costValueStyle.Render(fmt.Sprintf("$%.4f", r.cost)))
-	b.WriteString(mutedStyle.Render("prompt: ") + wrapText(r.prompt, m.width-12) + "\n")
-	b.WriteString(mutedStyle.Render("response: ") + wrapText(r.response, m.width-12))
+	b.WriteString("    ")
+	fmt.Fprintf(&b, "%s  %s   %s  %s   %s  %s\n",
+		mutedStyle.Render("model"), modelColor(r.model, r.provider),
+		mutedStyle.Render("provider"), mutedStyle.Render(r.provider),
+		mutedStyle.Render("dur"), durStr)
+	b.WriteString("    ")
+	fmt.Fprintf(&b, "%s  %s   %s  %s   %s  %s\n",
+		mutedStyle.Render("tokens"),
+		statValueStyle.Render(fmt.Sprintf("%d ↑", r.inTok)),
+		statValueStyle.Render(fmt.Sprintf("%d ↓", r.outTok)),
+		mutedStyle.Render("cost"),
+		costValueStyle.Render(fmt.Sprintf("$%.4f", r.cost)),
+		"")
+	b.WriteString("\n")
+	b.WriteString("    " + mutedStyle.Render("prompt  ") + wrapText(r.prompt, m.width-12) + "\n")
+	b.WriteString("    " + mutedStyle.Render("response ") + wrapText(r.response, m.width-12))
 	m.viewport.SetContent(b.String())
 	return m.viewport.View()
 }

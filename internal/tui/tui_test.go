@@ -50,8 +50,8 @@ func TestViewWithEvents(t *testing.T) {
 	if !strings.Contains(out, "claude-sonnet-4-5") {
 		t.Fatalf("should show model name, got:\n%s", out)
 	}
-	if !strings.Contains(out, "refactor the auth module") {
-		t.Fatalf("should show prompt in detail, got:\n%s", out)
+	if !strings.Contains(out, "(live)") {
+		t.Fatalf("should show live indicator, got:\n%s", out)
 	}
 
 	endEvt := event.Event{
@@ -67,8 +67,8 @@ func TestViewWithEvents(t *testing.T) {
 	if !strings.Contains(out, "$0.009") {
 		t.Fatalf("should show cost, got:\n%s", out)
 	}
-	if !strings.Contains(out, "I'll refactor the auth module") {
-		t.Fatalf("should show response, got:\n%s", out)
+	if !strings.Contains(out, "refactor the auth module") {
+		t.Fatalf("should show prompt, got:\n%s", out)
 	}
 }
 

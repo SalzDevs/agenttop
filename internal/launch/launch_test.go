@@ -141,8 +141,14 @@ func TestBuildTmuxCommandsClaude(t *testing.T) {
 	if !strings.Contains(splitWindow, "tmux kill-session -t 'agenttop'") {
 		t.Fatalf("pane must kill session on exit: %s", splitWindow)
 	}
-	if !strings.HasPrefix(splitWindow, "tmux split-window -v -p 75 -t agenttop ") {
+	if !strings.HasPrefix(splitWindow, "tmux split-window -v -t agenttop ") {
 		t.Fatalf("unexpected split-window argv: %s", splitWindow)
+	}
+	// Last step must resize the top (monitor) pane to 5 lines.
+	last := steps[len(steps)-1]
+	resize := strings.Join(last.args, " ")
+	if !strings.HasPrefix(resize, "tmux resize-pane -t agenttop:0.0 -y 5") {
+		t.Fatalf("monitor pane must be resized to 5 lines, got: %s", resize)
 	}
 }
 
