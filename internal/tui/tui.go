@@ -252,7 +252,7 @@ func (m Model) View() string {
 	// ── Detail (latest request) ──
 	detail := m.renderDetail()
 
-	return strings.Join([]string{header, sep, list, "", detail}, "\n")
+	return strings.Join([]string{header, "", sep, list, "", "", detail}, "\n")
 }
 
 func (m Model) renderHeader(cost float64, in, out, reqs, inFlight int, burn float64) string {
