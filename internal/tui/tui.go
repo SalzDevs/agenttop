@@ -15,55 +15,51 @@ import (
 )
 
 // ── Palette ──────────────────────────────────────────────────────────────
-// A clean, minimal palette built around a single accent (cyan) with
-// warm/cool semantic colors that don't fight each other.
+// Matches the logo exactly: 5 colors, cyan as the accent.
 
 var (
-	// Accent — the one color that defines the brand
-	cyan   = lipgloss.Color("#56D4DD")
-	purple = lipgloss.Color("#A78BFA")
-	green  = lipgloss.Color("#7DD3A0")
-	amber  = lipgloss.Color("#F5B86B")
-	red    = lipgloss.Color("#F2789B")
-	dim    = lipgloss.Color("#3A3F47")
-	text   = lipgloss.Color("#D4D8DE")
-	muted  = lipgloss.Color("#6B7280")
+	// Logo colors
+	cyan   = lipgloss.Color("#56D4DD") // accent — brand, sparkline high, live
+	purple = lipgloss.Color("#A78BFA") // sparkline mid, secondary accent
+	muted  = lipgloss.Color("#6B7280") // labels, secondary text
+	dim    = lipgloss.Color("#3A3F47") // separators, sparkline low
+	bg     = lipgloss.Color("#111318") // background
 
-	// Brand
+	// Brand — the sparkline logo rendered in cyan/purple/dim blocks
 	brandStyle = lipgloss.NewStyle().Foreground(cyan).Bold(true)
 
-	// Stat boxes — borderless, just colored labels + values
+	// Stats — borderless colored labels + values
 	statLabelStyle = lipgloss.NewStyle().Foreground(muted)
-	costValueStyle = lipgloss.NewStyle().Foreground(amber).Bold(true)
-	burnValueStyle = lipgloss.NewStyle().Foreground(red).Bold(true)
-	liveValueStyle = lipgloss.NewStyle().Foreground(green).Bold(true)
-	statValueStyle = lipgloss.NewStyle().Foreground(text).Bold(true)
+	costValueStyle = lipgloss.NewStyle().Foreground(cyan).Bold(true)
+	burnValueStyle = lipgloss.NewStyle().Foreground(cyan).Bold(true)
+	liveValueStyle = lipgloss.NewStyle().Foreground(cyan).Bold(true)
+	statValueStyle = lipgloss.NewStyle().Foreground(muted).Bold(true)
 
-	// Separator line
+	// Separator
 	sepStyle = lipgloss.NewStyle().Foreground(dim)
 
 	// Detail
 	mutedStyle = lipgloss.NewStyle().Foreground(muted)
-	textStyle  = lipgloss.NewStyle().Foreground(text)
 
 	// Sparkline
 	sparkHigh = lipgloss.NewStyle().Foreground(cyan)
 	sparkMid  = lipgloss.NewStyle().Foreground(purple)
 	sparkLow  = lipgloss.NewStyle().Foreground(dim)
 
-	// Provider model colors
-	anthStyle  = lipgloss.NewStyle().Foreground(amber)
-	openaiStyle = lipgloss.NewStyle().Foreground(green)
-	ocStyle    = lipgloss.NewStyle().Foreground(cyan)
+	// Provider model colors — only cyan and purple from the logo
+	anthStyle   = lipgloss.NewStyle().Foreground(purple)
+	openaiStyle = lipgloss.NewStyle().Foreground(cyan)
+	ocStyle     = lipgloss.NewStyle().Foreground(cyan)
 
 	// Status
 	inFlightStyle = lipgloss.NewStyle().Foreground(cyan)
-	errStyle      = lipgloss.NewStyle().Foreground(red)
-	okStyle       = lipgloss.NewStyle().Foreground(green)
+	errStyle      = lipgloss.NewStyle().Foreground(muted)
+	okStyle       = lipgloss.NewStyle().Foreground(dim)
 )
 
-// logo is a compact one-line ASCII wordmark.
-const logo = "◢◤"
+// logo is the sparkline wordmark from the logo image — 5 bars in the
+// palette colors: dim, muted, purple, cyan, cyan.
+const logo = "▁▃▅▇█"
 
 var sparkBlocks = []rune("▁▂▃▄▅▆▇█")
 
@@ -261,8 +257,9 @@ func (m Model) View() string {
 }
 
 func (m Model) renderHeader(cost float64, in, out, reqs, inFlight int, burn float64) string {
-	// Line 1: logo + brand + key stats inline
-	logoBrand := brandStyle.Render(logo) + " " + brandStyle.Render("agenttop")
+	// Line 1: logo (5 colored bars) + brand + key stats inline
+	logoRendered := sparkLow.Render("▁") + mutedStyle.Render("▃") + sparkMid.Render("▅") + sparkHigh.Render("▇█")
+	logoBrand := logoRendered + " " + brandStyle.Render("agenttop")
 
 	stat := func(label, value string, valStyle lipgloss.Style) string {
 		return statLabelStyle.Render(label+" ") + valStyle.Render(value)
@@ -332,7 +329,7 @@ func modelColor(model, provider string) string {
 	case "opencode", "opencode-go":
 		return ocStyle.Render(model)
 	default:
-		return textStyle.Render(model)
+		return mutedStyle.Render(model)
 	}
 }
 
@@ -406,12 +403,12 @@ func (m Model) renderDetail() string {
 	if r.inFlight {
 		durStr = inFlightStyle.Render(fmt.Sprintf("%.2fs", time.Since(r.time).Seconds())) + mutedStyle.Render(" (live)")
 	} else {
-		durStr = textStyle.Render(durStr)
+		durStr = mutedStyle.Render(durStr)
 	}
 
 	fmt.Fprintf(&b, "%s  %s  %s  %s  %s  %s\n",
 		mutedStyle.Render("model:"), modelColor(r.model, r.provider),
-		mutedStyle.Render("provider:"), textStyle.Render(r.provider),
+		mutedStyle.Render("provider:"), mutedStyle.Render(r.provider),
 		mutedStyle.Render("dur:"), durStr)
 	fmt.Fprintf(&b, "%s %s  %s  %s %s\n",
 		mutedStyle.Render("tokens:"),
@@ -433,7 +430,7 @@ func wrapText(s string, width int) string {
 		width = 4
 	}
 	if len([]rune(s)) <= width {
-		return textStyle.Render(s)
+		return mutedStyle.Render(s)
 	}
-	return textStyle.Render(string([]rune(s)[:width-1])) + mutedStyle.Render("…")
+	return mutedStyle.Render(string([]rune(s)[:width-1])) + mutedStyle.Render("…")
 }
