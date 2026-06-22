@@ -51,7 +51,7 @@ var (
 	sparkLow  = lipgloss.NewStyle().Foreground(lipgloss.Color("58"))
 )
 
-const sparkBlocks = "▁▂▃▄▅▆▇█"
+var sparkBlocks = []rune("▁▂▃▄▅▆▇█")
 
 type row struct {
 	trace     int64
@@ -352,8 +352,8 @@ func (m Model) renderSparkline() string {
 }
 
 func (m Model) renderTable() string {
-	cols := []int{min(24, m.width/5), 7, 8, 8, 8, 10}
-	headers := []string{"MODEL", "PROV", "STATUS", "IN", "OUT", "COST"}
+	cols := []int{min(28, m.width/4), 10, 8, 8, 12}
+	headers := []string{"MODEL", "STATUS", "IN", "OUT", "COST"}
 	headerRow := tableHeaderStyle.Render(padRow(headers, cols))
 
 	var lines []string
@@ -380,8 +380,6 @@ func (m Model) renderTable() string {
 			status = goodStyle.Render(fmt.Sprintf("%d", r.status))
 		}
 
-		prov := providerBadge(r.provider)
-
 		costStr := fmt.Sprintf("$%.4f", r.cost)
 		if r.inFlight {
 			costStr = mutedStyle.Render("...")
@@ -394,7 +392,7 @@ func (m Model) renderTable() string {
 			model = "-"
 		}
 
-		rowStr := padRow([]string{model, prov, status, fmt.Sprintf("%d", r.inTok), fmt.Sprintf("%d", r.outTok), costStr}, cols)
+		rowStr := padRow([]string{model, status, fmt.Sprintf("%d", r.inTok), fmt.Sprintf("%d", r.outTok), costStr}, cols)
 
 		if i == m.selected && m.focusList {
 			rowStr = selStyle.Render(rowStr)
@@ -418,8 +416,9 @@ func (m Model) renderDetail() string {
 	}
 	r := m.rows[m.selected]
 	var b strings.Builder
-	fmt.Fprintf(&b, "%s  %s  %s  %s\n",
+	fmt.Fprintf(&b, "%s  %s  %s  %s  %s  %s\n",
 		statLabelStyle.Render("model:"), r.model,
+		statLabelStyle.Render("provider:"), r.provider,
 		statLabelStyle.Render("dur:"), r.duration)
 	fmt.Fprintf(&b, "%s %d↓  %d↑  %s $%.4f\n",
 		statLabelStyle.Render("tokens:"), r.inTok, r.outTok,

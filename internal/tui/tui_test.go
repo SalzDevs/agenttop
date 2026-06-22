@@ -56,8 +56,8 @@ func TestViewWithEvents(t *testing.T) {
 	if !strings.Contains(out, "claude-sonnet-4-5") {
 		t.Fatalf("View() should show model name, got:\n%s", out)
 	}
-	if !strings.Contains(out, "anth") {
-		t.Fatalf("View() should show provider badge, got:\n%s", out)
+	if !strings.Contains(out, "anthropic") {
+		t.Fatalf("View() should show provider in detail pane, got:\n%s", out)
 	}
 	if !strings.Contains(out, "refactor the auth module") {
 		t.Fatalf("View() should show prompt in detail, got:\n%s", out)
@@ -133,12 +133,6 @@ func TestViewMultipleProvidersAndCost(t *testing.T) {
 	}
 	if !strings.Contains(out, "glm-5.2") {
 		t.Fatalf("should show glm-5.2 model, got:\n%s", out)
-	}
-	if !strings.Contains(out, "oai") {
-		t.Fatalf("should show openai provider badge, got:\n%s", out)
-	}
-	if !strings.Contains(out, "oc") {
-		t.Fatalf("should show opencode provider badge, got:\n%s", out)
 	}
 	if !strings.Contains(out, "$0.015") {
 		t.Fatalf("should show total cost $0.015 in header, got:\n%s", out)
