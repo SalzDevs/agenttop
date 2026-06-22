@@ -14,27 +14,56 @@ import (
 	"github.com/SalzDevs/agenttop/internal/store"
 )
 
-var (
-	// Brand
-	brandStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("213")).Padding(0, 1)
+// ── Palette ──────────────────────────────────────────────────────────────
+// A clean, minimal palette built around a single accent (cyan) with
+// warm/cool semantic colors that don't fight each other.
 
-	// Stat boxes
-	statBoxStyle    = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).Padding(0, 1).BorderForeground(lipgloss.Color("238"))
-	statLabelStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("241")).Faint(true)
-	statValueStyle  = lipgloss.NewStyle().Bold(true)
-	costValueStyle  = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("214"))
-	burnValueStyle  = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("203"))
-	liveValueStyle  = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("42"))
+var (
+	// Accent — the one color that defines the brand
+	cyan   = lipgloss.Color("#56D4DD")
+	purple = lipgloss.Color("#A78BFA")
+	green  = lipgloss.Color("#7DD3A0")
+	amber  = lipgloss.Color("#F5B86B")
+	red    = lipgloss.Color("#F2789B")
+	dim    = lipgloss.Color("#3A3F47")
+	text   = lipgloss.Color("#D4D8DE")
+	muted  = lipgloss.Color("#6B7280")
+
+	// Brand
+	brandStyle = lipgloss.NewStyle().Foreground(cyan).Bold(true)
+
+	// Stat boxes — borderless, just colored labels + values
+	statLabelStyle = lipgloss.NewStyle().Foreground(muted)
+	costValueStyle = lipgloss.NewStyle().Foreground(amber).Bold(true)
+	burnValueStyle = lipgloss.NewStyle().Foreground(red).Bold(true)
+	liveValueStyle = lipgloss.NewStyle().Foreground(green).Bold(true)
+	statValueStyle = lipgloss.NewStyle().Foreground(text).Bold(true)
+
+	// Separator line
+	sepStyle = lipgloss.NewStyle().Foreground(dim)
 
 	// Detail
-	detailBorderStyle = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color("238")).Padding(0, 1)
-	mutedStyle        = lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
-	dimStyle          = lipgloss.NewStyle().Foreground(lipgloss.Color("238"))
+	mutedStyle = lipgloss.NewStyle().Foreground(muted)
+	textStyle  = lipgloss.NewStyle().Foreground(text)
 
 	// Sparkline
-	sparkHigh = lipgloss.NewStyle().Foreground(lipgloss.Color("214"))
-	sparkLow  = lipgloss.NewStyle().Foreground(lipgloss.Color("58"))
+	sparkHigh = lipgloss.NewStyle().Foreground(cyan)
+	sparkMid  = lipgloss.NewStyle().Foreground(purple)
+	sparkLow  = lipgloss.NewStyle().Foreground(dim)
+
+	// Provider model colors
+	anthStyle  = lipgloss.NewStyle().Foreground(amber)
+	openaiStyle = lipgloss.NewStyle().Foreground(green)
+	ocStyle    = lipgloss.NewStyle().Foreground(cyan)
+
+	// Status
+	inFlightStyle = lipgloss.NewStyle().Foreground(cyan)
+	errStyle      = lipgloss.NewStyle().Foreground(red)
+	okStyle       = lipgloss.NewStyle().Foreground(green)
 )
+
+// logo is a compact one-line ASCII wordmark.
+const logo = "◢◤"
 
 var sparkBlocks = []rune("▁▂▃▄▅▆▇█")
 
@@ -75,7 +104,6 @@ type Model struct {
 	height   int
 	costWin  []timeDurCost
 
-	// Sparkline data: cost per 2-second bucket, most recent last
 	sparkData   []float64
 	sparkBucket float64
 	sparkTick   int
@@ -88,7 +116,7 @@ type timeDurCost struct {
 
 func New(s *store.Store, b *event.Bus, port int) Model {
 	sp := spinner.New(spinner.WithSpinner(spinner.MiniDot))
-	vp := viewport.New(80, 8)
+	vp := viewport.New(80, 4)
 	return Model{
 		store:     s,
 		bus:       b,
@@ -124,7 +152,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
-		m.viewport.Width = msg.Width - 4
+		m.viewport.Width = msg.Width
 		m.viewport.Height = 4
 		m.ready = true
 	case tickMsg:
@@ -189,11 +217,9 @@ func (m *Model) pruneCostWindow() {
 	m.costWin = keep
 }
 
-// updateSpark accumulates cost into a 2-second bucket, then appends it to the
-// sparkline data when the bucket is full. Keeps the last 40 buckets (80s).
 func (m *Model) updateSpark() {
 	m.sparkTick++
-	if m.sparkTick >= 4 { // 4 ticks × 500ms = 2s per bucket
+	if m.sparkTick >= 4 {
 		m.sparkData = append(m.sparkData, m.sparkBucket)
 		if len(m.sparkData) > 40 {
 			m.sparkData = m.sparkData[1:]
@@ -219,11 +245,11 @@ func (m Model) View() string {
 	cost, in, out, reqs, inFlight := m.store.Stats()
 	burn := m.burnPerHour()
 
-	// ── Header bar ──
+	// ── Header: logo + brand + inline stats + sparkline, all on 2 lines ──
 	header := m.renderHeader(cost, in, out, reqs, inFlight, burn)
 
-	// ── Sparkline ──
-	spark := m.renderSparkline()
+	// ── Separator ──
+	sep := sepStyle.Render(strings.Repeat("─", m.width))
 
 	// ── Request list ──
 	list := m.renderList()
@@ -231,34 +257,38 @@ func (m Model) View() string {
 	// ── Detail (latest request) ──
 	detail := m.renderDetail()
 
-	return strings.Join([]string{header, spark, list, detail}, "\n")
+	return strings.Join([]string{header, sep, list, detail}, "\n")
 }
 
 func (m Model) renderHeader(cost float64, in, out, reqs, inFlight int, burn float64) string {
-	brand := brandStyle.Render("agenttop")
+	// Line 1: logo + brand + key stats inline
+	logoBrand := brandStyle.Render(logo) + " " + brandStyle.Render("agenttop")
 
 	stat := func(label, value string, valStyle lipgloss.Style) string {
-		return statBoxStyle.Render(
-			statLabelStyle.Render(label) + "\n" + valStyle.Render(value),
-		)
+		return statLabelStyle.Render(label+" ") + valStyle.Render(value)
 	}
 
-	costBox := stat("TOTAL COST", fmt.Sprintf("$%.4f", cost), costValueStyle)
-	burnBox := stat("BURN/HR", fmt.Sprintf("$%.2f", burn), burnValueStyle)
-	liveBox := stat("LIVE", fmt.Sprintf("%d", inFlight), liveValueStyle)
-	tokBox := stat("TOKENS", fmt.Sprintf("%d↑ %d↓", in, out), statValueStyle)
-	reqBox := stat("REQUESTS", fmt.Sprintf("%d", reqs), statValueStyle)
+	line1 := lipgloss.JoinHorizontal(lipgloss.Center,
+		logoBrand,
+		stat("cost", fmt.Sprintf("$%.4f", cost), costValueStyle),
+		stat("burn", fmt.Sprintf("$%.2f/h", burn), burnValueStyle),
+		stat("live", fmt.Sprintf("%d", inFlight), liveValueStyle),
+		stat("in", fmt.Sprintf("%d", in), statValueStyle),
+		stat("out", fmt.Sprintf("%d", out), statValueStyle),
+		stat("reqs", fmt.Sprintf("%d", reqs), statValueStyle),
+	)
 
-	statsRow := lipgloss.JoinHorizontal(lipgloss.Top, costBox, burnBox, liveBox, tokBox, reqBox)
-	return brand + "\n" + statsRow
+	// Line 2: sparkline
+	spark := m.renderSparkline()
+
+	return line1 + "\n" + spark
 }
 
 func (m Model) renderSparkline() string {
 	if len(m.sparkData) < 2 {
-		return mutedStyle.Render("  burn rate: collecting data...")
+		return mutedStyle.Render("  collecting data...")
 	}
 
-	// Render sparkline as block characters
 	maxVal := 0.0
 	for _, v := range m.sparkData {
 		if v > maxVal {
@@ -270,7 +300,7 @@ func (m Model) renderSparkline() string {
 	}
 
 	var b strings.Builder
-	b.WriteString(mutedStyle.Render("  burn  "))
+	b.WriteString(mutedStyle.Render("  "))
 	for _, v := range m.sparkData {
 		idx := int(v / maxVal * float64(len(sparkBlocks)-1))
 		if idx < 0 {
@@ -280,14 +310,40 @@ func (m Model) renderSparkline() string {
 			idx = len(sparkBlocks) - 1
 		}
 		c := string(sparkBlocks[idx])
-		if v > 0 {
+		switch {
+		case v > maxVal*0.66:
 			b.WriteString(sparkHigh.Render(c))
-		} else {
+		case v > maxVal*0.33:
+			b.WriteString(sparkMid.Render(c))
+		default:
 			b.WriteString(sparkLow.Render(c))
 		}
 	}
 	b.WriteString(mutedStyle.Render(fmt.Sprintf("  $%.2f/h", m.burnPerHour())))
 	return b.String()
+}
+
+func modelColor(model, provider string) string {
+	switch provider {
+	case "anthropic":
+		return anthStyle.Render(model)
+	case "openai":
+		return openaiStyle.Render(model)
+	case "opencode", "opencode-go":
+		return ocStyle.Render(model)
+	default:
+		return textStyle.Render(model)
+	}
+}
+
+func statusSymbol(r *row) string {
+	if r.inFlight {
+		return inFlightStyle.Render("●")
+	}
+	if r.err != "" {
+		return errStyle.Render("✗")
+	}
+	return okStyle.Render("✓")
 }
 
 func (m Model) renderList() string {
@@ -312,26 +368,28 @@ func (m Model) renderList() string {
 			model = "-"
 		}
 
-		status := ""
-		if r.inFlight {
-			status = "●"
-		} else if r.err != "" {
-			status = "✗"
-		} else {
-			status = "✓"
-		}
-
 		costStr := fmt.Sprintf("$%.4f", r.cost)
 		if r.inFlight {
-			costStr = "..."
+			costStr = mutedStyle.Render("...")
+		} else if r.cost > 0 {
+			costStr = costValueStyle.Render(costStr)
 		}
 
 		durStr := fmt.Sprintf("%.2fs", r.duration.Seconds())
 		if r.inFlight {
-			durStr = fmt.Sprintf("%.2fs", time.Since(r.time).Seconds()) + "..."
+			durStr = inFlightStyle.Render(fmt.Sprintf("%.2fs", time.Since(r.time).Seconds())) + mutedStyle.Render("...")
+		} else {
+			durStr = mutedStyle.Render(durStr)
 		}
 
-		line := fmt.Sprintf("  %s %-20s %6s  in:%-6d out:%-6d %s", status, model, durStr, r.inTok, r.outTok, costStr)
+		line := fmt.Sprintf("  %s %s  %s  %s  %s  %s",
+			statusSymbol(r),
+			modelColor(fmt.Sprintf("%-22s", model), r.provider),
+			durStr,
+			mutedStyle.Render("in:")+fmt.Sprintf("%d", r.inTok),
+			mutedStyle.Render("out:")+fmt.Sprintf("%d", r.outTok),
+			costStr,
+		)
 		lines = append(lines, line)
 	}
 
@@ -340,26 +398,31 @@ func (m Model) renderList() string {
 
 func (m Model) renderDetail() string {
 	if len(m.rows) == 0 {
-		return detailBorderStyle.Render(mutedStyle.Render(" waiting for requests..."))
+		return mutedStyle.Render("  waiting for requests...")
 	}
-	// Always show the latest request
 	r := m.rows[len(m.rows)-1]
 	var b strings.Builder
 	durStr := fmt.Sprintf("%.2fs", r.duration.Seconds())
 	if r.inFlight {
-		durStr = fmt.Sprintf("%.2fs (live)", time.Since(r.time).Seconds())
+		durStr = inFlightStyle.Render(fmt.Sprintf("%.2fs", time.Since(r.time).Seconds())) + mutedStyle.Render(" (live)")
+	} else {
+		durStr = textStyle.Render(durStr)
 	}
+
 	fmt.Fprintf(&b, "%s  %s  %s  %s  %s  %s\n",
-		statLabelStyle.Render("model:"), r.model,
-		statLabelStyle.Render("provider:"), r.provider,
-		statLabelStyle.Render("dur:"), durStr)
-	fmt.Fprintf(&b, "%s %d↑  %d↓  %s $%.4f\n",
-		statLabelStyle.Render("tokens:"), r.inTok, r.outTok,
-		statLabelStyle.Render("cost:"), r.cost)
-	b.WriteString(mutedStyle.Render("prompt: ") + wrapText(r.prompt, m.width-6) + "\n")
-	b.WriteString(mutedStyle.Render("response: ") + wrapText(r.response, m.width-6))
+		mutedStyle.Render("model:"), modelColor(r.model, r.provider),
+		mutedStyle.Render("provider:"), textStyle.Render(r.provider),
+		mutedStyle.Render("dur:"), durStr)
+	fmt.Fprintf(&b, "%s %s  %s  %s %s\n",
+		mutedStyle.Render("tokens:"),
+		statValueStyle.Render(fmt.Sprintf("%d↑", r.inTok)),
+		statValueStyle.Render(fmt.Sprintf("%d↓", r.outTok)),
+		mutedStyle.Render("cost:"),
+		costValueStyle.Render(fmt.Sprintf("$%.4f", r.cost)))
+	b.WriteString(mutedStyle.Render("prompt: ") + wrapText(r.prompt, m.width-12) + "\n")
+	b.WriteString(mutedStyle.Render("response: ") + wrapText(r.response, m.width-12))
 	m.viewport.SetContent(b.String())
-	return detailBorderStyle.Render(m.viewport.View())
+	return m.viewport.View()
 }
 
 func wrapText(s string, width int) string {
@@ -370,7 +433,7 @@ func wrapText(s string, width int) string {
 		width = 4
 	}
 	if len([]rune(s)) <= width {
-		return s
+		return textStyle.Render(s)
 	}
-	return string([]rune(s)[:width-1]) + "…"
+	return textStyle.Render(string([]rune(s)[:width-1])) + mutedStyle.Render("…")
 }

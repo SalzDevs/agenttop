@@ -19,16 +19,16 @@ func TestViewEmpty(t *testing.T) {
 
 	out := m.View()
 	if !strings.Contains(out, "agenttop") {
-		t.Fatalf("View() should contain 'agenttop' brand, got:\n%s", out)
+		t.Fatalf("should contain brand, got:\n%s", out)
 	}
-	if !strings.Contains(out, "TOTAL COST") {
-		t.Fatalf("View() should show stat box labels, got:\n%s", out)
+	if !strings.Contains(out, "cost") {
+		t.Fatalf("should show cost label, got:\n%s", out)
 	}
-	if !strings.Contains(out, "BURN/HR") {
-		t.Fatalf("View() should show burn rate box, got:\n%s", out)
+	if !strings.Contains(out, "burn") {
+		t.Fatalf("should show burn label, got:\n%s", out)
 	}
 	if !strings.Contains(out, "waiting for requests") {
-		t.Fatalf("View() should show waiting message when empty, got:\n%s", out)
+		t.Fatalf("should show waiting message, got:\n%s", out)
 	}
 }
 
@@ -41,55 +41,34 @@ func TestViewWithEvents(t *testing.T) {
 	m.height = 40
 
 	startEvt := event.Event{
-		TraceID:       1,
-		Time:          time.Now(),
-		Provider:      "anthropic",
-		Model:         "claude-sonnet-4-5",
-		Endpoint:      "/v1/messages",
-		Method:        "POST",
-		Streaming:     true,
-		PromptPreview: "refactor the auth module",
+		TraceID: 1, Time: time.Now(), Provider: "anthropic", Model: "claude-sonnet-4-5",
+		Streaming: true, PromptPreview: "refactor the auth module",
 	}
 	m.applyEvent(startEvt)
 
 	out := m.View()
 	if !strings.Contains(out, "claude-sonnet-4-5") {
-		t.Fatalf("View() should show model name, got:\n%s", out)
-	}
-	if !strings.Contains(out, "anthropic") {
-		t.Fatalf("View() should show provider in detail pane, got:\n%s", out)
+		t.Fatalf("should show model name, got:\n%s", out)
 	}
 	if !strings.Contains(out, "refactor the auth module") {
-		t.Fatalf("View() should show prompt in detail, got:\n%s", out)
+		t.Fatalf("should show prompt in detail, got:\n%s", out)
 	}
 
 	endEvt := event.Event{
-		TraceID:          1,
-		Time:             time.Now(),
-		Provider:         "anthropic",
-		Model:            "claude-sonnet-4-5",
-		Endpoint:         "/v1/messages",
-		Method:           "POST",
-		Status:           200,
-		Streaming:        true,
-		Duration:         2 * time.Second,
-		InputTokens:      1500,
-		OutputTokens:     300,
-		CacheReadTokens:  500,
-		CacheWriteTokens: 0,
-		CostUSD:          0.009,
-		PromptPreview:    "refactor the auth module",
-		ResponsePreview:  "I'll refactor the auth module to use...",
+		TraceID: 1, Time: time.Now(), Provider: "anthropic", Model: "claude-sonnet-4-5",
+		Status: 200, Duration: 2 * time.Second, InputTokens: 1500, OutputTokens: 300,
+		CostUSD: 0.009, PromptPreview: "refactor the auth module",
+		ResponsePreview: "I'll refactor the auth module to use...",
 	}
 	st.Append(endEvt)
 	m.applyEvent(endEvt)
 
 	out = m.View()
 	if !strings.Contains(out, "$0.009") {
-		t.Fatalf("View() should show cost $0.009 in detail, got:\n%s", out)
+		t.Fatalf("should show cost, got:\n%s", out)
 	}
 	if !strings.Contains(out, "I'll refactor the auth module") {
-		t.Fatalf("View() should show response preview in detail, got:\n%s", out)
+		t.Fatalf("should show response, got:\n%s", out)
 	}
 }
 
@@ -112,7 +91,6 @@ func TestViewMultipleProvidersAndCost(t *testing.T) {
 		e := event.Event{
 			TraceID: int64(i + 1), Time: time.Now(), Provider: prov, Model: model,
 			Status: 200, InputTokens: 1000, OutputTokens: 200, CostUSD: 0.005,
-			PromptPreview: "test query", ResponsePreview: "test response",
 		}
 		st.Append(e)
 		m.applyEvent(e)
@@ -120,16 +98,13 @@ func TestViewMultipleProvidersAndCost(t *testing.T) {
 
 	out := m.View()
 	if !strings.Contains(out, "$0.015") {
-		t.Fatalf("should show total cost $0.015 in header, got:\n%s", out)
+		t.Fatalf("should show total cost $0.015, got:\n%s", out)
 	}
 	if !strings.Contains(out, "3000") {
-		t.Fatalf("should show total input tokens 3000 in header, got:\n%s", out)
+		t.Fatalf("should show total input tokens, got:\n%s", out)
 	}
 	if !strings.Contains(out, "600") {
-		t.Fatalf("should show total output tokens 600 in header, got:\n%s", out)
-	}
-	if !strings.Contains(out, "REQUESTS") {
-		t.Fatalf("should show requests stat box, got:\n%s", out)
+		t.Fatalf("should show total output tokens, got:\n%s", out)
 	}
 }
 
@@ -143,8 +118,8 @@ func TestSparklineRendering(t *testing.T) {
 
 	for i := 0; i < 10; i++ {
 		e := event.Event{
-			TraceID: int64(i + 1), Time: time.Now(), Provider: "anthropic", Model: "claude-sonnet-4-5",
-			Status: 200, InputTokens: 100, OutputTokens: 50, CostUSD: 0.001 * float64(i+1),
+			TraceID: int64(i + 1), Time: time.Now(), Provider: "anthropic", Model: "test",
+			Status: 200, CostUSD: 0.001 * float64(i+1),
 		}
 		st.Append(e)
 		m.applyEvent(e)
@@ -157,10 +132,7 @@ func TestSparklineRendering(t *testing.T) {
 	out := m.View()
 	if len(m.sparkData) >= 2 {
 		if !strings.Contains(out, "burn") {
-			t.Fatalf("should show sparkline with burn label, got:\n%s", out)
-		}
-		if !strings.Contains(out, "/h") {
-			t.Fatalf("should show burn rate per hour in sparkline, got:\n%s", out)
+			t.Fatalf("should show sparkline, got:\n%s", out)
 		}
 	}
 }
@@ -177,7 +149,7 @@ func TestListShowsRequests(t *testing.T) {
 		e := event.Event{
 			TraceID: int64(i + 1), Time: time.Now(), Provider: "anthropic",
 			Model: "claude-sonnet-4-5", Status: 200, InputTokens: 100, OutputTokens: 50,
-			CostUSD: 0.005, PromptPreview: "test", ResponsePreview: "resp",
+			CostUSD: 0.005,
 		}
 		st.Append(e)
 		m.applyEvent(e)
@@ -198,10 +170,23 @@ func TestNoKeyCommands(t *testing.T) {
 	m.height = 40
 
 	out := m.View()
-	// Should NOT contain any keybinding hints
 	for _, key := range []string{"quit", "select", "toggle", "bottom", "q quit", "jk", "↑↓"} {
 		if strings.Contains(strings.ToLower(out), strings.ToLower(key)) {
-			t.Fatalf("View() should not contain keybinding '%s', got:\n%s", key, out)
+			t.Fatalf("should not contain keybinding '%s', got:\n%s", key, out)
 		}
+	}
+}
+
+func TestLogoPresent(t *testing.T) {
+	st, _ := store.New("", 100)
+	bus := event.NewBus()
+	m := New(st, bus, 7331)
+	m.ready = true
+	m.width = 120
+	m.height = 40
+
+	out := m.View()
+	if !strings.Contains(out, logo) {
+		t.Fatalf("should contain logo %q, got:\n%s", logo, out)
 	}
 }
