@@ -283,7 +283,7 @@ func (m Model) renderHeader(cost float64, in, out, reqs, inFlight int, burn floa
 	// Line 2: sparkline
 	spark := m.renderSparkline()
 
-	return line1 + "\n" + spark
+	return line1 + "\n\n\n" + spark
 }
 
 func (m Model) renderSparkline() string {
