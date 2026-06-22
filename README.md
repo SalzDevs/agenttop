@@ -1,9 +1,9 @@
-# agenttop
+# <img src="docs/logo-128.png" width="28" height="28" alt=""> agenttop
 
 > **htop, but for AI coding agents.** Watch what Claude Code, Cursor, Codex and Gemini CLI are doing — and what they're costing you — in real time, right in your terminal.
 
 <p align="center">
-  <img src="docs/demo.gif" width="880" alt="agenttop demo: live agents, token counts and cost burn ticking up">
+  <img src="docs/logo-512.png" width="200" alt="agenttop logo">
 </p>
 
 `agenttop` is a tiny local proxy that sits between your AI coding agents and the model providers. Every request that flows through it shows up live: the model, token counts, latency, the prompt, the response — and a running dollar total that ticks up as your agents work.
