@@ -368,12 +368,17 @@ func (m Model) renderSelector() string {
 			costStr = "..."
 		}
 
+		durStr := fmt.Sprintf("%.2fs", r.duration.Seconds())
+		if r.inFlight {
+			durStr = fmt.Sprintf("%.2fs", time.Since(r.time).Seconds()) + "..."
+		}
+
 		marker := " "
 		if i == m.selected {
 			marker = "▶"
 		}
 
-		line := fmt.Sprintf("%s %s %s  in:%d out:%d  %s", marker, status, model, r.inTok, r.outTok, costStr)
+		line := fmt.Sprintf("%s %s %-20s %6s  in:%-6d out:%-6d %s", marker, status, model, durStr, r.inTok, r.outTok, costStr)
 		if i == m.selected {
 			line = selStyle.Render(line)
 		}
@@ -389,10 +394,14 @@ func (m Model) renderDetail() string {
 	}
 	r := m.rows[m.selected]
 	var b strings.Builder
+	durStr := fmt.Sprintf("%.2fs", r.duration.Seconds())
+	if r.inFlight {
+		durStr = fmt.Sprintf("%.2fs (live)", time.Since(r.time).Seconds())
+	}
 	fmt.Fprintf(&b, "%s  %s  %s  %s  %s  %s\n",
 		statLabelStyle.Render("model:"), r.model,
 		statLabelStyle.Render("provider:"), r.provider,
-		statLabelStyle.Render("dur:"), r.duration)
+		statLabelStyle.Render("dur:"), durStr)
 	fmt.Fprintf(&b, "%s %d↑  %d↓  %s $%.4f\n",
 		statLabelStyle.Render("tokens:"), r.inTok, r.outTok,
 		statLabelStyle.Render("cost:"), r.cost)
