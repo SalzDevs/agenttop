@@ -28,7 +28,6 @@ var (
 
 	// Detail
 	detailBorderStyle = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color("238")).Padding(0, 1)
-	selStyle          = lipgloss.NewStyle().Bold(true).Background(lipgloss.Color("236")).Foreground(lipgloss.Color("255"))
 	mutedStyle        = lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
 	dimStyle          = lipgloss.NewStyle().Foreground(lipgloss.Color("238"))
 
@@ -68,15 +67,13 @@ type Model struct {
 	rows     []*row
 	byTrace  map[int64]*row
 	maxRows  int
-	selected int
 
 	spinner  spinner.Model
 	viewport viewport.Model
 	ready    bool
 	width    int
 	height   int
-	focusList bool
-	costWin   []timeDurCost
+	costWin  []timeDurCost
 
 	// Sparkline data: cost per 2-second bucket, most recent last
 	sparkData   []float64
@@ -101,7 +98,6 @@ func New(s *store.Store, b *event.Bus, port int) Model {
 		maxRows:   100,
 		spinner:   sp,
 		viewport:  vp,
-		focusList: true,
 		sparkData: make([]float64, 0, 40),
 	}
 }
@@ -142,35 +138,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case eventMsg:
 		m.applyEvent(msg.e)
 		return m, waitForEvent(m.sub)
-	case tea.KeyMsg:
-		switch msg.String() {
-		case "ctrl+c", "q":
-			return m, tea.Quit
-		case "tab":
-			m.focusList = !m.focusList
-		case "up", "k":
-			if m.focusList && m.selected > 0 {
-				m.selected--
-			} else {
-				m.viewport.LineUp(1)
-			}
-		case "down", "j":
-			if m.focusList && m.selected < len(m.rows)-1 {
-				m.selected++
-			} else {
-				m.viewport.LineDown(1)
-			}
-		case "g":
-			if m.focusList {
-				m.selected = 0
-			}
-		case "G":
-			if m.focusList && len(m.rows) > 0 {
-				m.selected = len(m.rows) - 1
-			}
-		case "enter":
-			m.focusList = !m.focusList
-		}
 	}
 	return m, nil
 }
@@ -185,9 +152,6 @@ func (m *Model) applyEvent(e event.Event) {
 			old := m.rows[0]
 			m.rows = m.rows[1:]
 			delete(m.byTrace, old.trace)
-			if m.selected > 0 {
-				m.selected--
-			}
 		}
 	}
 	r.time = e.Time
@@ -211,9 +175,6 @@ func (m *Model) applyEvent(e event.Event) {
 	if e.CostUSD > 0 {
 		m.costWin = append(m.costWin, timeDurCost{t: e.Time, cost: e.CostUSD})
 		m.sparkBucket += e.CostUSD
-	}
-	if m.selected >= len(m.rows) {
-		m.selected = len(m.rows) - 1
 	}
 }
 
@@ -264,16 +225,13 @@ func (m Model) View() string {
 	// ── Sparkline ──
 	spark := m.renderSparkline()
 
-	// ── Request selector ──
-	selector := m.renderSelector()
+	// ── Request list ──
+	list := m.renderList()
 
-	// ── Detail ──
+	// ── Detail (latest request) ──
 	detail := m.renderDetail()
 
-	// ── Footer ──
-	footer := m.renderFooter()
-
-	return strings.Join([]string{header, spark, selector, detail, footer}, "\n")
+	return strings.Join([]string{header, spark, list, detail}, "\n")
 }
 
 func (m Model) renderHeader(cost float64, in, out, reqs, inFlight int, burn float64) string {
@@ -332,7 +290,7 @@ func (m Model) renderSparkline() string {
 	return b.String()
 }
 
-func (m Model) renderSelector() string {
+func (m Model) renderList() string {
 	if len(m.rows) == 0 {
 		return mutedStyle.Render("  waiting for requests...")
 	}
@@ -373,15 +331,7 @@ func (m Model) renderSelector() string {
 			durStr = fmt.Sprintf("%.2fs", time.Since(r.time).Seconds()) + "..."
 		}
 
-		marker := " "
-		if i == m.selected {
-			marker = "▶"
-		}
-
-		line := fmt.Sprintf("%s %s %-20s %6s  in:%-6d out:%-6d %s", marker, status, model, durStr, r.inTok, r.outTok, costStr)
-		if i == m.selected {
-			line = selStyle.Render(line)
-		}
+		line := fmt.Sprintf("  %s %-20s %6s  in:%-6d out:%-6d %s", status, model, durStr, r.inTok, r.outTok, costStr)
 		lines = append(lines, line)
 	}
 
@@ -389,10 +339,11 @@ func (m Model) renderSelector() string {
 }
 
 func (m Model) renderDetail() string {
-	if len(m.rows) == 0 || m.selected < 0 || m.selected >= len(m.rows) {
-		return detailBorderStyle.Render(mutedStyle.Render(" select a request to see details"))
+	if len(m.rows) == 0 {
+		return detailBorderStyle.Render(mutedStyle.Render(" waiting for requests..."))
 	}
-	r := m.rows[m.selected]
+	// Always show the latest request
+	r := m.rows[len(m.rows)-1]
 	var b strings.Builder
 	durStr := fmt.Sprintf("%.2fs", r.duration.Seconds())
 	if r.inFlight {
@@ -409,15 +360,6 @@ func (m Model) renderDetail() string {
 	b.WriteString(mutedStyle.Render("response: ") + wrapText(r.response, m.width-6))
 	m.viewport.SetContent(b.String())
 	return detailBorderStyle.Render(m.viewport.View())
-}
-
-func (m Model) renderFooter() string {
-	footer := dimStyle.Render(" q quit  •  ↑↓/jk select  •  tab toggle detail  •  G bottom ")
-	focus := mutedStyle.Render("list")
-	if !m.focusList {
-		focus = mutedStyle.Render("detail")
-	}
-	return footer + "  " + focus
 }
 
 func wrapText(s string, width int) string {

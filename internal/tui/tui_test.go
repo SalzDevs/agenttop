@@ -27,6 +27,9 @@ func TestViewEmpty(t *testing.T) {
 	if !strings.Contains(out, "BURN/HR") {
 		t.Fatalf("View() should show burn rate box, got:\n%s", out)
 	}
+	if !strings.Contains(out, "waiting for requests") {
+		t.Fatalf("View() should show waiting message when empty, got:\n%s", out)
+	}
 }
 
 func TestViewWithEvents(t *testing.T) {
@@ -51,7 +54,7 @@ func TestViewWithEvents(t *testing.T) {
 
 	out := m.View()
 	if !strings.Contains(out, "claude-sonnet-4-5") {
-		t.Fatalf("View() should show model name in detail, got:\n%s", out)
+		t.Fatalf("View() should show model name, got:\n%s", out)
 	}
 	if !strings.Contains(out, "anthropic") {
 		t.Fatalf("View() should show provider in detail pane, got:\n%s", out)
@@ -116,8 +119,6 @@ func TestViewMultipleProvidersAndCost(t *testing.T) {
 	}
 
 	out := m.View()
-	// With the table removed, model names only appear in the detail pane
-	// (showing the selected row). The header shows aggregate stats.
 	if !strings.Contains(out, "$0.015") {
 		t.Fatalf("should show total cost $0.015 in header, got:\n%s", out)
 	}
@@ -140,7 +141,6 @@ func TestSparklineRendering(t *testing.T) {
 	m.width = 120
 	m.height = 40
 
-	// Add some cost events to populate spark data
 	for i := 0; i < 10; i++ {
 		e := event.Event{
 			TraceID: int64(i + 1), Time: time.Now(), Provider: "anthropic", Model: "claude-sonnet-4-5",
@@ -150,8 +150,6 @@ func TestSparklineRendering(t *testing.T) {
 		m.applyEvent(e)
 	}
 
-	// Simulate ticks to fill spark buckets (updateSpark is called every 500ms tick,
-	// and commits a bucket every 4 ticks = 2 seconds)
 	for i := 0; i < 20; i++ {
 		m.updateSpark()
 	}
@@ -167,7 +165,7 @@ func TestSparklineRendering(t *testing.T) {
 	}
 }
 
-func TestSelectorShowsRequests(t *testing.T) {
+func TestListShowsRequests(t *testing.T) {
 	st, _ := store.New("", 100)
 	bus := event.NewBus()
 	m := New(st, bus, 7331)
@@ -175,7 +173,6 @@ func TestSelectorShowsRequests(t *testing.T) {
 	m.width = 120
 	m.height = 40
 
-	// Add 3 events
 	for i := 0; i < 3; i++ {
 		e := event.Event{
 			TraceID: int64(i + 1), Time: time.Now(), Provider: "anthropic",
@@ -187,12 +184,24 @@ func TestSelectorShowsRequests(t *testing.T) {
 	}
 
 	out := m.View()
-	// Should show request selector with all 3 models
 	if !strings.Contains(out, "claude-sonnet-4-5") {
-		t.Fatalf("selector should show model name, got:\n%s", out)
+		t.Fatalf("list should show model name, got:\n%s", out)
 	}
-	// Should show the selected marker
-	if !strings.Contains(out, "▶") {
-		t.Fatalf("selector should show selection marker, got:\n%s", out)
+}
+
+func TestNoKeyCommands(t *testing.T) {
+	st, _ := store.New("", 100)
+	bus := event.NewBus()
+	m := New(st, bus, 7331)
+	m.ready = true
+	m.width = 120
+	m.height = 40
+
+	out := m.View()
+	// Should NOT contain any keybinding hints
+	for _, key := range []string{"quit", "select", "toggle", "bottom", "q quit", "jk", "↑↓"} {
+		if strings.Contains(strings.ToLower(out), strings.ToLower(key)) {
+			t.Fatalf("View() should not contain keybinding '%s', got:\n%s", key, out)
+		}
 	}
 }
