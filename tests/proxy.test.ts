@@ -79,7 +79,7 @@ describe("launch helpers", () => {
   });
 
   test("buildTmuxCommands has the right shape", () => {
-    const steps = buildTmuxCommands("/usr/local/bin/agenttop", "agenttop", ["claude"], 7331);
+    const steps = buildTmuxCommands(["/usr/local/bin/agenttop"], "agenttop", ["claude"], 7331);
     const join = steps.map((s) => s.args.join(" ")).join("\n");
     expect(join).toContain("tmux new-session -d -s agenttop");
     expect(join).toContain("tmux set-environment -t agenttop ANTHROPIC_BASE_URL http://127.0.0.1:7331");
@@ -89,7 +89,7 @@ describe("launch helpers", () => {
   });
 
   test("buildTmuxCommands injects OPENCODE_CONFIG_CONTENT for opencode", () => {
-    const steps = buildTmuxCommands("/usr/local/bin/agenttop", "agenttop", ["opencode", "run"], 7331);
+    const steps = buildTmuxCommands(["/usr/local/bin/agenttop"], "agenttop", ["opencode", "run"], 7331);
     const env = steps.find((s) => s.args[1] === "set-environment" && s.args[4] === "OPENCODE_CONFIG_CONTENT");
     expect(env).toBeDefined();
   });

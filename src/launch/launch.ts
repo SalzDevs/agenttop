@@ -76,25 +76,25 @@ export function envForAgent(cmd: string, port: number): string[] {
   return env;
 }
 
-// selfPath returns the path that can be re-invoked to run agenttop again.
-// When launched as a compiled binary, this is the binary path. When launched
-// as `bun run src/cli.ts ...`, this is the bun binary plus the ABSOLUTE script
-// path (so the tmux pane command works regardless of the pane's cwd).
-export function selfPath(): string {
+// selfParts returns the argv parts needed to re-invoke agenttop.
+// When launched as a compiled binary, this is just [binaryPath].
+// When launched as `bun run src/cli.ts ...`, this is [bunPath, absScriptPath]
+// so the tmux pane command works regardless of the pane's cwd.
+export function selfParts(): string[] {
   const exec = process.execPath;
   const argv1 = process.argv[1] || "";
   // Compiled binary: argv[1] is the first user arg (e.g. "claude"), not a path.
   if (!argv1.endsWith(".ts") && !argv1.endsWith(".js")) {
-    return exec;
+    return [exec];
   }
   // Dev mode: resolve to absolute path so the tmux pane can find it
   // regardless of its working directory.
-  const abs = resolve(argv1);
-  return `${exec} ${abs}`;
+  return [exec, resolve(argv1)];
 }
 
+// shellSelf returns the shell-quoted self invocation string.
 export function shellSelf(): string {
-  return shellQuote(selfPath());
+  return selfParts().map(shellQuote).join(" ");
 }
 // Used so an agent doesn't start before the monitor's proxy is up.
 export async function waitPort(port: number): Promise<void> {
@@ -150,7 +150,7 @@ export interface TmuxStep {
 // (and OPENCODE_CONFIG_CONTENT for opencode) from the session environment, set
 // via `tmux set-environment` so the agent pane receives them.
 export function buildTmuxCommands(
-  self: string,
+  selfParts: string[],
   sess: string,
   agentCmd: string[],
   port: number,
@@ -158,7 +158,7 @@ export function buildTmuxCommands(
   const baseURL = `http://127.0.0.1:${port}`;
   const baseURLv1 = `http://127.0.0.1:${port}/v1`;
 
-  const selfQuoted = shellQuote(self);
+  const selfQuoted = selfParts.map(shellQuote).join(" ");
   const monitorShell = `${selfQuoted} --port ${port} monitor`;
   const waitShell = `${selfQuoted} --port ${port} wait`;
   const agentShell = shellJoin(agentCmd);
@@ -226,7 +226,7 @@ export async function tmuxSplit(
     }
   }
 
-  const self = selfPath();
+  const self = selfParts();
   for (const s of buildTmuxCommands(self, SESSION, agentCmd, port)) {
     const r = spawnSync(s.args[0], s.args.slice(1), {
       stdio: ["ignore", "inherit", "pipe"],
