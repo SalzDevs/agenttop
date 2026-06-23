@@ -96,15 +96,17 @@ export function selfParts(): string[] {
 export function shellSelf(): string {
   return selfParts().map(shellQuote).join(" ");
 }
+// waitPort blocks until something is listening on 127.0.0.1:port (up to ~10s).
 // Used so an agent doesn't start before the monitor's proxy is up.
 export async function waitPort(port: number): Promise<void> {
-  for (let i = 0; i < 100; i++) {
+  for (let i = 0; i < 200; i++) {
     try {
-      await Bun.connect({ hostname: "127.0.0.1", port, socket: { data() {}, open() {}, close() {} } });
-      return;
+      const resp = await fetch(`http://127.0.0.1:${port}/`, { method: "GET" }).catch(() => null);
+      if (resp) return;
     } catch {
-      await Bun.sleep(100);
+      // not up yet
     }
+    await Bun.sleep(50);
   }
 }
 

@@ -177,67 +177,54 @@ export class Proxy {
       return new Response(String(err), { status: 502 });
     }
 
-    // Read the full upstream body. We use a 1MB ring buffer for SSE
-    // captures (the final usage chunk arrives last), then drain the
-    // rest to a fresh Buffer for the client. For JSON responses the
-    // body is small and fits entirely.
-    const capture = new CaptureWriter();
-    const chunks: Buffer[] = [];
-    let total = 0;
-    if (upstream.body) {
-      const reader = upstream.body.getReader();
-      try {
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          if (value) {
-            const buf = Buffer.from(value);
-            capture.write(buf);
-            chunks.push(buf);
-            total += buf.length;
-          }
-        }
-      } finally {
-        reader.releaseLock();
-      }
-    }
-    const fullBody = Buffer.concat(chunks, total);
-
-    // Parse usage from the captured tail.
-    const ct = upstream.headers.get("content-type") || "";
-    const isSSE = ct.includes("text/event-stream");
-    const { usage, responsePreview } = isSSE
-      ? parseSSE(rt.provider, capture.bytes())
-      : parseJSON(rt.provider, fullBody);
-
-    const endEvt: Event = {
-      ...startEvt,
-      time: new Date(),
-      status: upstream.status,
-      durationMs: Date.now() - start.getTime(),
-      inputTokens: usage.in,
-      outputTokens: usage.out,
-      cacheReadTokens: usage.cacheRead,
-      cacheWriteTokens: usage.cacheWrite,
-      responsePreview,
-      costUSD: pricingCost(
-        meta.model,
-        usage.in,
-        usage.out,
-        usage.cacheRead,
-        usage.cacheWrite,
-      ),
-    };
-    await this.emit(endEvt);
-
-    // Pass through the response, dropping content-length (we built a
-    // different body).
+    // Build response headers (drop content-length since we're streaming
+    // a different body).
     const respHeaders = new Headers();
     for (const [k, v] of upstream.headers.entries()) {
       if (k.toLowerCase() === "content-length") continue;
       respHeaders.set(k, v);
     }
-    return new Response(fullBody, {
+
+    const ct = upstream.headers.get("content-type") || "";
+    const isSSE = ct.includes("text/event-stream");
+    const capture = new CaptureWriter();
+
+    // If there's no body (e.g. HEAD, 204), return immediately.
+    if (!upstream.body) {
+      const endEvt = makeEndEvt(startEvt, start, upstream.status, { in: 0, out: 0, cacheRead: 0, cacheWrite: 0 }, "", meta.model);
+      await this.emit(endEvt);
+      return new Response(null, { status: upstream.status, headers: respHeaders });
+    }
+
+    // Stream the upstream body to the client in real-time while
+    // capturing chunks in parallel. When the stream ends, parse the
+    // captured tail for usage and emit the end event.
+    const reader = upstream.body.getReader();
+
+    const stream = new ReadableStream({
+      pull: async (controller): Promise<void> => {
+        const { done, value } = await reader.read();
+        if (done) {
+          controller.close();
+          // Parse usage from the captured tail.
+          const { usage, responsePreview } = isSSE
+            ? parseSSE(rt.provider, capture.bytes())
+            : parseJSON(rt.provider, capture.bytes());
+          const endEvt = makeEndEvt(startEvt, start, upstream.status, usage, responsePreview, meta.model);
+          await this.emit(endEvt);
+          return;
+        }
+        if (value) {
+          capture.write(Buffer.from(value));
+          controller.enqueue(value);
+        }
+      },
+      cancel: () => {
+        reader.cancel().catch(() => {});
+      },
+    });
+
+    return new Response(stream, {
       status: upstream.status,
       headers: respHeaders,
     });
@@ -251,6 +238,28 @@ function makeFail(e: Event, start: Date, msg: string): Event {
     status: 0,
     durationMs: Date.now() - start.getTime(),
     err: msg,
+  };
+}
+
+function makeEndEvt(
+  startEvt: Event,
+  start: Date,
+  status: number,
+  usage: Usage,
+  responsePreview: string,
+  model: string,
+): Event {
+  return {
+    ...startEvt,
+    time: new Date(),
+    status,
+    durationMs: Date.now() - start.getTime(),
+    inputTokens: usage.in,
+    outputTokens: usage.out,
+    cacheReadTokens: usage.cacheRead,
+    cacheWriteTokens: usage.cacheWrite,
+    responsePreview,
+    costUSD: pricingCost(model, usage.in, usage.out, usage.cacheRead, usage.cacheWrite),
   };
 }
 
