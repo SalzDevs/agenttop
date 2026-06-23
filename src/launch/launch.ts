@@ -146,11 +146,9 @@ export function buildTmuxCommands(
   const paneShell = `${waitShell}; ${agentShell}; ${killShell}`;
 
   const steps: TmuxStep[] = [
-    // Ensure the tmux server is running before any other command. Without
-    // this, the first invocation races — `new-session` and `set-environment`
-    // both fail with "error connecting to /tmp/tmux-501/default" if the
-    // server socket doesn't exist yet.
-    { args: ["tmux", "start-server"] },
+    // `new-session -d` auto-starts the tmux server, so this single command
+    // is enough to bring up a fresh server (and ignore the no-op kill
+    // if no prior session exists).
     { args: ["tmux", "kill-session", "-t", sess] },
     { args: ["tmux", "new-session", "-d", "-s", sess, monitorShell] },
     { args: ["tmux", "set-environment", "-t", sess, "ANTHROPIC_BASE_URL", baseURL] },
@@ -213,9 +211,8 @@ export async function tmuxSplit(
     const r = spawnSync(s.args[0], s.args.slice(1), {
       stdio: ["ignore", "inherit", "pipe"],
     });
-    // start-server and kill-session can fail benignly (no server, no
-    // session) — ignore those.
-    if (r.status !== 0 && s.args[1] !== "start-server" && s.args[1] !== "kill-session") {
+    // kill-session fails if no session exists; ignore that one.
+    if (r.status !== 0 && s.args[1] !== "kill-session") {
       const msg = r.stderr?.toString().trim() || r.error?.message || `exit ${r.status}`;
       process.stderr.write(`agenttop: tmux ${s.args.slice(1).join(" ")}: ${msg}\n`);
       return 1;
