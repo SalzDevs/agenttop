@@ -81,6 +81,7 @@ describe("launch helpers", () => {
   test("buildTmuxCommands has the right shape", () => {
     const steps = buildTmuxCommands("/usr/local/bin/agenttop", "agenttop", ["claude"], 7331);
     const join = steps.map((s) => s.args.join(" ")).join("\n");
+    expect(join).toContain("tmux start-server");
     expect(join).toContain("tmux new-session -d -s agenttop");
     expect(join).toContain("tmux set-environment -t agenttop ANTHROPIC_BASE_URL http://127.0.0.1:7331");
     expect(join).toContain("tmux split-window -v -t agenttop");
