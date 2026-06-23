@@ -25,11 +25,11 @@ curl -sSf https://raw.githubusercontent.com/SalzDevs/agenttop/main/scripts/insta
 # Homebrew
 brew install SalzDevs/tap/agenttop
 
-# Go
-go install github.com/SalzDevs/agenttop@latest
+# bun (zero install)
+bunx github.com/SalzDevs/agenttop
 
 # Build from source
-git clone https://github.com/SalzDevs/agenttop && cd agenttop && make build
+git clone https://github.com/SalzDevs/agenttop && cd agenttop && bun run build
 ```
 
 ## Quickstart
@@ -65,7 +65,7 @@ agenttop run -- claude
 
 - **Live request table** — every model call, with provider, model, status, input/output tokens, and per-request cost. In-flight requests show a spinner and stream in real time.
 - **Running total** — cumulative `$` spent, total tokens in/out, request count, and a live **burn rate** in `$/hour` computed over the last 60 seconds.
-- **Detail pane** — select any request to see the prompt preview and the response that came back.
+- **Detail pane** — see the prompt preview and the response that came back for the most recent request.
 - **Per-agent support** — Claude Code, Cursor, Codex CLI, OpenCode, Gemini CLI, and anything else that lets you set `ANTHROPIC_BASE_URL` / `OPENAI_BASE_URL` / `OPENAI_API_BASE` (or, for opencode, a provider `baseURL`).
 
 ## How it works
@@ -77,14 +77,22 @@ your agent ──HTTP──▶ agenttop (localhost:7331) ──forward──▶ 
                              └─▶ live TUI  (+ optional JSONL log)
 ```
 
-`agenttop` is a transparent reverse proxy. It streams responses straight back to your agent with zero buffering, so latency is unaffected. In parallel it parses the token `usage` from each response and computes cost from a built-in pricing table. Keys are forwarded unchanged and never stored.
+`agenttop` is a transparent reverse proxy. It captures the response body in parallel with forwarding it to your agent, parses the token `usage` from each response, and computes cost from a built-in pricing table. Keys are forwarded unchanged and never stored.
 
 ## Flags
 
 ```
---port, -p <n>   proxy listen port (default 7331)
---log,  -l <p>   append every event to a JSONL file
+--port, -p <n>        proxy listen port (default 7331)
+--log,  -l <p>        append every event to a JSONL file
+--anthropic-url <url> override Anthropic upstream (for local LLMs / proxies)
+--openai-url <url>    override OpenAI upstream (for local LLMs / proxies)
 ```
+
+## Stack
+
+- **TypeScript** end-to-end, compiled to a native binary via [Bun](https://bun.sh)
+- **[OpenTUI](https://github.com/anomalyco/opentui)** for the terminal interface (same renderer that powers OpenCode)
+- Single static binary, no runtime dependency
 
 ## Roadmap
 
@@ -100,7 +108,7 @@ your agent ──HTTP──▶ agenttop (localhost:7331) ──forward──▶ 
 
 ## Contributing
 
-PRs welcome. The pricing table in `internal/pricing/pricing.go` goes out of date fast — model additions and price corrections are great first PRs.
+PRs welcome. The pricing table in `src/pricing/pricing.ts` goes out of date fast — model additions and price corrections are great first PRs.
 
 ## License
 

@@ -11,19 +11,71 @@ permissions:
 
 jobs:
   release:
+    name: Build & release
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - os: darwin
+            arch: x64
+            target: bun-darwin-x64
+          - os: darwin
+            arch: arm64
+            target: bun-darwin-arm64
+          - os: linux
+            arch: x64
+            target: bun-linux-x64
+          - os: linux
+            arch: arm64
+            target: bun-linux-arm64
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - uses: actions/setup-go@v5
+      - uses: oven-sh/setup-bun@v1
         with:
-          go-version: "1.23"
+          bun-version: "1.1"
 
-      - uses: goreleaser/goreleaser-action@v6
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Test
+        run: bun test
+
+      - name: Type check
+        run: bunx tsc --noEmit
+
+      - name: Build binary (${{ matrix.os }}/${{ matrix.arch }})
+        run: |
+          bun build --compile --target=${{ matrix.target }} --outfile "agenttop-${{ matrix.os }}-${{ matrix.arch }}" src/cli.ts
+          chmod +x "agenttop-${{ matrix.os }}-${{ matrix.arch }}"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
         with:
-          version: "~> v2"
-          args: release --clean
+          name: agenttop-${{ matrix.os }}-${{ matrix.arch }}
+          path: agenttop-${{ matrix.os }}-${{ matrix.arch }}
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    name: Publish GitHub release
+    needs: release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/agenttop-darwin-x64/agenttop-darwin-x64
+            dist/agenttop-darwin-arm64/agenttop-darwin-arm64
+            dist/agenttop-linux-x64/agenttop-linux-x64
+            dist/agenttop-linux-arm64/agenttop-linux-arm64
+          generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

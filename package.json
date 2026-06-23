@@ -1,0 +1,44 @@
+{
+  "name": "agenttop",
+  "version": "0.1.0",
+  "description": "htop for AI coding agents — real-time token, cost, and duration monitor for Claude Code, Cursor, Codex, OpenCode, Gemini CLI and more",
+  "type": "module",
+  "bin": {
+    "agenttop": "./dist/agenttop"
+  },
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "bun build --compile --target=bun-linux-x64 --outfile dist/agenttop src/cli.ts && bun build --compile --target=bun-darwin-x64 --outfile dist/agenttop-darwin src/cli.ts && bun build --compile --target=bun-darwin-arm64 --outfile dist/agenttop-darwin-arm64 src/cli.ts && bun build --compile --target=bun-linux-arm64 --outfile dist/agenttop-linux-arm64 src/cli.ts",
+    "build:current": "bun build --compile --outfile agenttop src/cli.ts",
+    "dev": "bun run src/cli.ts",
+    "test": "bun test",
+    "lint": "tsc --noEmit",
+    "format": "prettier --write \"src/**/*.ts\" \"tests/**/*.ts\""
+  },
+  "keywords": [
+    "claude",
+    "anthropic",
+    "openai",
+    "opencode",
+    "ai",
+    "monitor",
+    "cli",
+    "tui",
+    "htop",
+    "cost",
+    "tokens"
+  ],
+  "author": "SalzDevs",
+  "license": "MIT",
+  "dependencies": {
+    "@opentui/core": "^0.1.0"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "prettier": "^3.0.0",
+    "typescript": "^5.4.0"
+  },
+  "engines": {
+    "bun": ">=1.1.0"
+  }
+}

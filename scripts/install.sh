@@ -1,5 +1,6 @@
 #!/bin/sh
 # agenttop installer — downloads the latest release from GitHub.
+# Supports macOS (x86_64 + arm64) and Linux (x86_64 + arm64).
 set -e
 
 OWNER="SalzDevs"
@@ -13,7 +14,7 @@ case "$OS" in
   *) echo "unsupported OS: $OS" >&2; exit 1 ;;
 esac
 case "$ARCH" in
-  x86_64|amd64) arch="x86_64" ;;
+  x86_64|amd64) arch="x64" ;;
   arm64|aarch64) arch="arm64" ;;
   *) echo "unsupported arch: $ARCH" >&2; exit 1 ;;
 esac
@@ -30,27 +31,26 @@ fi
 
 tag="$(fetch "https://api.github.com/repos/${OWNER}/${REPO}/releases/latest" | grep '"tag_name"' | sed -E 's/.*"([^"]+)".*/\1/')"
 if [ -z "$tag" ]; then
-  echo "could not determine latest release; install via go: go install github.com/${OWNER}/${REPO}@latest" >&2
+  echo "could not determine latest release; install via bunx:" >&2
+  echo "  bunx ${OWNER}/${REPO}" >&2
   exit 1
 fi
 
-archive="agenttop-${os}-${arch}.tar.gz"
-url="https://github.com/${OWNER}/${REPO}/releases/download/${tag}/${archive}"
+binary="agenttop-${os}-${arch}"
+url="https://github.com/${OWNER}/${REPO}/releases/download/${tag}/${binary}"
 echo "Downloading agenttop ${tag} (${os}/${arch})..."
 tmpdir="$(mktemp -d)"
 trap 'rm -rf "$tmpdir"' EXIT
 
-download "${tmpdir}/${archive}" "$url" || {
-  echo "no prebuilt binary for ${os}/${arch}; building from source..." >&2
-  go install "github.com/${OWNER}/${REPO}@${tag}"
-  exit 0
-}
-
-tar xzf "${tmpdir}/${archive}" -C "${tmpdir}"
+if ! download "${tmpdir}/${binary}" "$url"; then
+  echo "no prebuilt binary for ${os}/${arch}; install via bunx:" >&2
+  echo "  bunx ${OWNER}/${REPO}" >&2
+  exit 1
+fi
 
 dest="${DESTDIR:-${HOME}/.local/bin}"
 mkdir -p "$dest"
-mv "${tmpdir}/agenttop" "${dest}/agenttop"
+mv "${tmpdir}/${binary}" "${dest}/agenttop"
 chmod +x "${dest}/agenttop"
 echo "installed agenttop ${tag} to ${dest}/agenttop"
 case ":$PATH:" in
