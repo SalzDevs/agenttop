@@ -1,17 +1,9 @@
-// opentui TUI for agenttop.
-//
-// Renders a 1-line status bar: logo + brand + cost + burn + live + in/out +
-// reqs + sparkline, with a separator, the recent request list, and a detail
-// pane for the latest request. No keyboard input — the TUI is a passive
-// display, and exiting is done by detaching tmux.
-
-import { createCliRenderer, Box, Text } from "@opentui/core";
+import { createCliRenderer, Box, Text, t, fg, bold } from "@opentui/core";
 import { Bus, Event, isInFlight } from "../event/bus.js";
 import { Store } from "../store/store.js";
 
 const SPARK_BLOCKS = "▁▂▃▄▅▆▇█";
 
-// Palette — matches the logo exactly: 5 colors, cyan as the accent.
 const C = {
   cyan: "#56D4DD",
   purple: "#A78BFA",
@@ -60,12 +52,6 @@ function providerColor(provider: string): string {
   return C.muted;
 }
 
-function statusSymbol(r: Row): { glyph: string; color: string } {
-  if (r.inFlight) return { glyph: "●", color: C.cyan };
-  if (r.err) return { glyph: "✗", color: C.muted };
-  return { glyph: "✓", color: C.dim };
-}
-
 function formatDuration(r: Row): string {
   if (r.inFlight) {
     const s = ((Date.now() - r.time.getTime()) / 1000).toFixed(2);
@@ -76,6 +62,21 @@ function formatDuration(r: Row): string {
 
 function formatCost(c: number): string {
   return `$${c.toFixed(4)}`;
+}
+
+function buildSparkline(sparkData: number[]): string {
+  if (sparkData.length < 2) {
+    return "    ▁▂▃▄▅▆▇█";
+  }
+  const max = Math.max(0.0001, ...sparkData);
+  let result = "    ";
+  for (let i = 0; i < sparkData.length; i++) {
+    const v = sparkData[i];
+    const idx = Math.min(SPARK_BLOCKS.length - 1, Math.max(0, Math.floor((v / max) * (SPARK_BLOCKS.length - 1))));
+    result += SPARK_BLOCKS[idx];
+  }
+  result += `  $${(sparkData[sparkData.length - 1] || 0).toFixed(2)}/h`;
+  return result;
 }
 
 export async function renderTUI(
@@ -99,7 +100,6 @@ export async function renderTUI(
     } else {
       byTrace.delete(row.traceId);
     }
-    // Replace by trace id, then keep the last 1000 events.
     const idx = rows.findIndex((r) => r.traceId === row.traceId);
     if (idx >= 0) {
       rows[idx] = { ...rows[idx], ...row };
@@ -115,7 +115,6 @@ export async function renderTUI(
 
   const unsubscribe = bus.subscribe(pushEvent);
 
-  // 1s tick for sparkline + live durations.
   const tick = setInterval(computeSpark, 1000);
 
   function computeSpark() {
@@ -145,76 +144,65 @@ export async function renderTUI(
     const inFlightCount = byTrace.size;
     const burn = burnPerHour();
 
-    // ── Sparkline
-    let sparkStr = "";
-    if (sparkData.length >= 2) {
-      const max = Math.max(0.0001, ...sparkData);
-      const idxs = sparkData.map((v) => Math.min(SPARK_BLOCKS.length - 1, Math.max(0, Math.floor((v / max) * (SPARK_BLOCKS.length - 1)))));
-      sparkStr = idxs
-        .map((i, k) => {
-          const ch = SPARK_BLOCKS[i];
-          const v = sparkData[k];
-          if (v > max * 0.66) return `{${C.cyan}-fg}${ch}{/${C.cyan}-fg}`;
-          if (v > max * 0.33) return `{${C.purple}-fg}${ch}{/${C.purple}-fg}`;
-          return `{${C.dim}-fg}${ch}{/${C.dim}-fg}`;
-        })
-        .join("");
-    } else {
-      sparkStr = `{${C.muted}-fg}▁▂▃▄▅▆▇█{/${C.muted}-fg}`;
-    }
-
-    // ── Header line 1: logo + brand + stats (joined inline)
-    const headerLine1 = [
-      `  {${C.dim}-fg}▁{/${C.dim}-fg}{${C.muted}-fg}▃{/${C.muted}-fg}{${C.purple}-fg}▅{/${C.purple}-fg}{${C.cyan}-fg}▇█{/${C.cyan}-fg}`,
-      `{${C.cyan}-fg}{bold}agenttop{/bold}{/${C.cyan}-fg}`,
-      `   {${C.muted}-fg}cost{/${C.muted}-fg} {${C.cyan}-fg}{bold}${formatCost(totalCost)}{/bold}{/${C.cyan}-fg}`,
-      `   {${C.muted}-fg}burn{/${C.muted}-fg} {${C.purple}-fg}{bold}$${burn.toFixed(2)}/h{/bold}{/${C.purple}-fg}`,
-      `   {${C.muted}-fg}live{/${C.muted}-fg} {${C.cyan}-fg}{bold}${inFlightCount}{/bold}{/${C.cyan}-fg}`,
-      `   {${C.muted}-fg}in{/${C.muted}-fg} {${C.muted}-fg}{bold}${totalIn}{/bold}{/${C.muted}-fg}`,
-      `   {${C.muted}-fg}out{/${C.muted}-fg} {${C.muted}-fg}{bold}${totalOut}{/bold}{/${C.muted}-fg}`,
-      `   {${C.muted}-fg}reqs{/${C.muted}-fg} {${C.muted}-fg}{bold}${totalReqs}{/bold}{/${C.muted}-fg}`,
-    ].join("");
-
-    const headerLine2 = `    ${sparkStr}  {${C.purple}-fg}$${burn.toFixed(2)}/h{/${C.purple}-fg}`;
-
-    // ── Separator
-    const sep = `  {${C.dim}-fg}${"─".repeat(Math.max(8, width - 4))}{/${C.dim}-fg}`;
-
-    // ── Recent request list (latest 4)
-    const listMax = height < 20 ? 2 : 4;
-    const listStart = Math.max(0, rows.length - listMax);
-    const listLines = rows.slice(listStart).map((r) => {
-      const sym = statusSymbol(r);
-      const modelName = r.model || "-";
-      const costStr = r.inFlight ? `{${C.muted}-fg}…{/${C.muted}-fg}` : (r.cost > 0 ? `{${C.cyan}-fg}${formatCost(r.cost)}{/${C.cyan}-fg}` : formatCost(r.cost));
-      const durStr = formatDuration(r);
-      return `    {${sym.color}-fg}${sym.glyph}{/${sym.color}-fg}  {${providerColor(r.provider)}-fg}${modelName.padEnd(22)}{/${providerColor(r.provider)}-fg}   {${C.muted}-fg}${durStr}{/${C.muted}-fg}   {${C.muted}-fg}in{/${C.muted}-fg} ${r.inTok}  {${C.muted}-fg}out{/${C.muted}-fg} ${r.outTok}   {${C.muted}-fg}cost{/${C.muted}-fg}  ${costStr}`;
-    }).join("\n");
-
-    // ── Detail (latest request)
-    let detail = "";
-    if (rows.length > 0) {
-      const r = rows[rows.length - 1];
-      const modelName = r.model || "-";
-      const durStr = r.inFlight ? `{${C.cyan}-fg}${formatDuration(r)}{/${C.cyan}-fg}{${C.muted}-fg}  (live){/${C.muted}-fg}` : `{${C.muted}-fg}${formatDuration(r)}{/${C.muted}-fg}`;
-      const inFlight = `{${C.muted}-fg}model{/${C.muted}-fg}  {${providerColor(r.provider)}-fg}${modelName}{/${providerColor(r.provider)}-fg}   {${C.muted}-fg}provider{/${C.muted}-fg}  {${C.muted}-fg}${r.provider}{/${C.muted}-fg}   {${C.muted}-fg}dur{/${C.muted}-fg}  ${durStr}`;
-      const tokens = `{${C.muted}-fg}tokens{/${C.muted}-fg}  {${C.muted}-fg}{bold}${r.inTok} ↑{/bold}{/${C.muted}-fg}   {${C.muted}-fg}{bold}${r.outTok} ↓{/bold}{/${C.muted}-fg}   {${C.muted}-fg}cost{/${C.muted}-fg}  {${C.cyan}-fg}${formatCost(r.cost)}{/${C.cyan}-fg}`;
-      const prompt = `    {${C.muted}-fg}prompt  {/${C.muted}-fg}${r.prompt || "(empty)"}`;
-      detail = [inFlight, tokens, "", prompt].join("\n");
-    } else {
-      detail = `    {${C.muted}-fg}waiting for requests…{/${C.muted}-fg}`;
-    }
-
-    const body = [headerLine1, "", "", headerLine2, "", sep, listLines, "", "", detail].join("\n");
-
-    // Replace root children by removing existing then adding fresh.
+    // Remove old children
     for (const child of renderer.root.getChildren()) {
       renderer.root.remove(child.id);
     }
+
+    // Header line 1: logo + brand + stats
+    const headerLine1 = Text({
+      content: t`  ${fg(C.dim)("▁")}${fg(C.muted)("▃")}${fg(C.purple)("▅")}${fg(C.cyan)("▇█")}  ${fg(C.cyan)(bold("agenttop"))}   ${fg(C.muted)("cost")} ${fg(C.cyan)(bold(formatCost(totalCost)))}   ${fg(C.muted)("burn")} ${fg(C.purple)(bold(`$${burn.toFixed(2)}/h`))}   ${fg(C.muted)("live")} ${fg(C.cyan)(bold(`${inFlightCount}`))}   ${fg(C.muted)("in")} ${fg(C.muted)(bold(`${totalIn}`))}   ${fg(C.muted)("out")} ${fg(C.muted)(bold(`${totalOut}`))}   ${fg(C.muted)("reqs")} ${fg(C.muted)(bold(`${totalReqs}`))}`,
+    });
+
+    // Header line 2: sparkline
+    const sparkStr = buildSparkline(sparkData);
+    const headerLine2 = Text({ content: sparkStr, fg: C.muted });
+
+    // Separator
+    const sep = Text({ content: `  ${"─".repeat(Math.max(8, width - 4))}`, fg: C.dim });
+
+    // Build the children array
+    const children: any[] = [headerLine1, Text({ content: "" }), Text({ content: "" }), headerLine2, Text({ content: "" }), sep];
+
+    // Request list
+    const listMax = height < 20 ? 2 : 4;
+    const listStart = Math.max(0, rows.length - listMax);
+    for (const r of rows.slice(listStart)) {
+      const modelName = (r.model || "-").padEnd(22);
+      const durStr = formatDuration(r);
+      const line = Text({
+        content: t`    ${r.inFlight ? fg(C.cyan)("●") : r.err ? fg(C.muted)("✗") : fg(C.dim)("✓")}  ${fg(providerColor(r.provider))(modelName)}   ${r.inFlight ? fg(C.cyan)(durStr) : fg(C.muted)(durStr)}   ${fg(C.muted)("in")} ${r.inTok}  ${fg(C.muted)("out")} ${r.outTok}   ${fg(C.muted)("cost")}  ${r.inFlight ? fg(C.muted)("…") : r.cost > 0 ? fg(C.cyan)(formatCost(r.cost)) : formatCost(r.cost)}`,
+      });
+      children.push(line);
+    }
+
+    if (rows.length === 0) {
+      children.push(Text({ content: "    waiting for requests…", fg: C.muted }));
+    }
+
+    // Blank lines before detail
+    children.push(Text({ content: "" }));
+    children.push(Text({ content: "" }));
+
+    // Detail
+    if (rows.length > 0) {
+      const r = rows[rows.length - 1];
+      const modelName = r.model || "-";
+      const durStr = formatDuration(r);
+      children.push(Text({
+        content: t`    ${fg(C.muted)("model")}  ${fg(providerColor(r.provider))(modelName)}   ${fg(C.muted)("provider")}  ${fg(C.muted)(r.provider)}   ${fg(C.muted)("dur")}  ${r.inFlight ? fg(C.cyan)(durStr) : fg(C.muted)(durStr)}`,
+      }));
+      children.push(Text({
+        content: t`    ${fg(C.muted)("tokens")}  ${fg(C.muted)(bold(`${r.inTok} ↑`))}   ${fg(C.muted)(bold(`${r.outTok} ↓`))}   ${fg(C.muted)("cost")}  ${fg(C.cyan)(formatCost(r.cost))}`,
+      }));
+      children.push(Text({ content: "" }));
+      children.push(Text({ content: `    prompt  ${r.prompt || "(empty)"}`, fg: C.muted }));
+    }
+
     renderer.root.add(
       Box(
         { flexDirection: "column", width, height },
-        Text({ content: body }),
+        ...children,
       ),
     );
   }

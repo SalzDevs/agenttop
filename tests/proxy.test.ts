@@ -84,7 +84,7 @@ describe("launch helpers", () => {
     expect(join).toContain("tmux new-session -d -s agenttop");
     expect(join).toContain("tmux set-environment -t agenttop ANTHROPIC_BASE_URL http://127.0.0.1:7331");
     expect(join).toContain("tmux split-window -v -t agenttop");
-    expect(join).toContain("tmux resize-pane -t agenttop:0.0 -y 5");
+    expect(join).toContain("tmux resize-pane -t agenttop:0.0 -y 15");
     expect(join).not.toContain("tmux start-server");
   });
 

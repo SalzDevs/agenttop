@@ -194,8 +194,8 @@ export function buildTmuxCommands(
   steps.push(
     // Create the bottom (agent) pane.
     { args: ["tmux", "split-window", "-v", "-t", sess, paneShell] },
-    // Resize the top (monitor) pane to 5 rows.
-    { args: ["tmux", "resize-pane", "-t", `${sess}:0.0`, "-y", "5"] },
+    // Resize the top (monitor) pane to 15 rows so the TUI has room.
+    { args: ["tmux", "resize-pane", "-t", `${sess}:0.0`, "-y", "15"] },
   );
 
   return steps;
