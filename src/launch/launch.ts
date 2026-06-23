@@ -76,7 +76,26 @@ export function envForAgent(cmd: string, port: number): string[] {
   return env;
 }
 
-// waitPort blocks until something is listening on 127.0.0.1:port (up to ~10s).
+// selfPath returns the path that can be re-invoked to run agenttop again.
+// When launched as a compiled binary, this is the binary path. When launched
+// as `bun run src/cli.ts ...`, this is the bun binary plus the ABSOLUTE script
+// path (so the tmux pane command works regardless of the pane's cwd).
+export function selfPath(): string {
+  const exec = process.execPath;
+  const argv1 = process.argv[1] || "";
+  // Compiled binary: argv[1] is the first user arg (e.g. "claude"), not a path.
+  if (!argv1.endsWith(".ts") && !argv1.endsWith(".js")) {
+    return exec;
+  }
+  // Dev mode: resolve to absolute path so the tmux pane can find it
+  // regardless of its working directory.
+  const abs = resolve(argv1);
+  return `${exec} ${abs}`;
+}
+
+export function shellSelf(): string {
+  return shellQuote(selfPath());
+}
 // Used so an agent doesn't start before the monitor's proxy is up.
 export async function waitPort(port: number): Promise<void> {
   for (let i = 0; i < 100; i++) {
@@ -139,8 +158,9 @@ export function buildTmuxCommands(
   const baseURL = `http://127.0.0.1:${port}`;
   const baseURLv1 = `http://127.0.0.1:${port}/v1`;
 
-  const monitorShell = `${shellQuote(self)} --port ${port} monitor`;
-  const waitShell = `${shellQuote(self)} --port ${port} wait`;
+  const selfQuoted = shellQuote(self);
+  const monitorShell = `${selfQuoted} --port ${port} monitor`;
+  const waitShell = `${selfQuoted} --port ${port} wait`;
   const agentShell = shellJoin(agentCmd);
   const killShell = `tmux kill-session -t ${shellQuote(sess)}`;
   const paneShell = `${waitShell}; ${agentShell}; ${killShell}`;
@@ -206,7 +226,7 @@ export async function tmuxSplit(
     }
   }
 
-  const self = process.execPath;
+  const self = selfPath();
   for (const s of buildTmuxCommands(self, SESSION, agentCmd, port)) {
     const r = spawnSync(s.args[0], s.args.slice(1), {
       stdio: ["ignore", "inherit", "pipe"],

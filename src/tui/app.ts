@@ -21,14 +21,16 @@ export async function runMonitor(flags: MonitorFlags): Promise<void> {
   const { server, port } = await startProxy(proxy, flags.port);
   process.stderr.write(instructions(port));
 
-  if (!process.stdin.isTTY) {
-    process.stderr.write(`agenttop: no TTY, running proxy-only on :${port} (Ctrl+C to stop)\n`);
+  // Try the TUI. If it fails (no TTY, opentui crash, etc.) fall back to
+  // proxy-only mode so the tmux session doesn't die and kill the server.
+  try {
+    if (!process.stdin.isTTY) throw new Error("no TTY");
+    await renderTUI(store, bus, port);
+    server.stop();
+  } catch (err) {
+    process.stderr.write(`agenttop: TUI unavailable (${err}), running proxy-only on :${port} (Ctrl+C to stop)\n`);
     await new Promise(() => {});
-    return;
   }
-
-  await renderTUI(store, bus, port);
-  server.stop();
 }
 
 // runMonitorNoTUI runs just the proxy (used as a fallback when there's no
